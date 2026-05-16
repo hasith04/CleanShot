@@ -26,7 +26,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ChevronRight
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -57,16 +57,14 @@ class MainActivity : ComponentActivity() {
 }
 
 /**
- * 1. Simple Navigation Screen setup
+ * Navigation Setup
  */
-enum class Screen {
-    Home, Library, Settings
-}
+enum class Screen { Home, Library, Settings }
 
 /**
- * Result wrapper for screenshot fetching
+ * Data class for full screenshot information
  */
-data class ScreenshotData(
+data class ScreenshotResults(
     val recent: List<Uri>,
     val all: List<Uri>,
     val totalCount: Int
@@ -105,18 +103,16 @@ fun getStorageInfo(context: Context): StorageInfo {
 }
 
 /**
- * Main Container to handle Screen Switching
+ * The Root Composable that handles Navigation and Data Loading
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainContainer() {
     val context = LocalContext.current
     var currentScreen by remember { mutableStateOf(Screen.Home) }
+    var screenshotData by remember { mutableStateOf(ScreenshotResults(emptyList(), emptyList(), 0)) }
     
-    // Screenshot State
-    var screenshotData by remember { mutableStateOf(ScreenshotData(emptyList(), emptyList(), 0)) }
-    
-    val storageInfo = remember(screenshotData) { getStorageInfo(context) }
+    val storageInfo = remember(screenshotData.recent) { getStorageInfo(context) }
 
     val permissionNeeded = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_IMAGES
@@ -156,23 +152,21 @@ fun MainContainer() {
             )
         },
         bottomBar = {
-            BottomNavigationBar(
-                selectedScreen = currentScreen,
-                onScreenSelected = { currentScreen = it }
-            )
+            BottomNavigationBar(currentScreen) { currentScreen = it }
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding)) {
             when (currentScreen) {
-                Screen.Home -> HomeScreenContent(
+                Screen.Home -> HomeScreen(
                     storageInfo = storageInfo,
-                    screenshotData = screenshotData,
+                    totalCount = screenshotData.totalCount,
+                    recentScreenshots = screenshotData.recent,
                     onViewAllClick = { currentScreen = Screen.Library }
                 )
                 Screen.Library -> LibraryScreen(screenshotData.all)
                 Screen.Settings -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Settings Coming Soon")
+                    Text("Settings screen coming soon!")
                 }
             }
         }
@@ -180,9 +174,10 @@ fun MainContainer() {
 }
 
 @Composable
-fun HomeScreenContent(
+fun HomeScreen(
     storageInfo: StorageInfo,
-    screenshotData: ScreenshotData,
+    totalCount: Int,
+    recentScreenshots: List<Uri>,
     onViewAllClick: () -> Unit
 ) {
     LazyColumn(
@@ -209,14 +204,11 @@ fun HomeScreenContent(
         item { QuickActionsRow() }
         
         item { 
-            ScreenshotCountCard(screenshotData.totalCount) 
+            ScreenshotCountCard(totalCount) 
         }
 
         item {
-            RecentScreenshotsSection(
-                screenshots = screenshotData.recent,
-                onViewAllClick = onViewAllClick
-            )
+            RecentScreenshotsSection(recentScreenshots, onViewAllClick)
         }
 
         item { Spacer(modifier = Modifier.height(16.dp)) }
@@ -224,24 +216,20 @@ fun HomeScreenContent(
 }
 
 /**
- * 2. New Library Screen with Grid Layout
+ * 2. New Library Screen with ALL Screenshots in a Grid
  */
 @Composable
 fun LibraryScreen(allScreenshots: List<Uri>) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp)
-    ) {
+    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Text(
-            text = "All Screenshots (${allScreenshots.size})",
+            text = "Your Collection (${allScreenshots.size})",
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
             modifier = Modifier.padding(vertical = 16.dp)
         )
         
         if (allScreenshots.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No images found.")
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("No screenshots found.")
             }
         } else {
             LazyVerticalGrid(
@@ -254,7 +242,7 @@ fun LibraryScreen(allScreenshots: List<Uri>) {
                 items(allScreenshots) { uri ->
                     AsyncImage(
                         model = uri,
-                        contentDescription = null,
+                        contentDescription = "Screenshot",
                         modifier = Modifier
                             .aspectRatio(0.6f)
                             .clip(RoundedCornerShape(12.dp))
@@ -385,7 +373,7 @@ fun ScreenshotCountCard(count: Int) {
 }
 
 /**
- * 3. Updated Recent Section with "View All" Button
+ * 3. Recent Section with "View All" Button
  */
 @Composable
 fun RecentScreenshotsSection(screenshots: List<Uri>, onViewAllClick: () -> Unit) {
@@ -403,9 +391,9 @@ fun RecentScreenshotsSection(screenshots: List<Uri>, onViewAllClick: () -> Unit)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("View All")
                     Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ChevronRight,
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                         contentDescription = null,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(16.dp).padding(start = 4.dp)
                     )
                 }
             }
@@ -458,11 +446,11 @@ fun BottomNavigationBar(selectedScreen: Screen, onScreenSelected: (Screen) -> Un
 }
 
 /**
- * 4. Improved MediaStore query for REAL total count
+ * 4. Improved MediaStore query to return ALL data
  */
-fun fetchScreenshotsData(context: Context): ScreenshotData {
+fun fetchScreenshotsData(context: Context): ScreenshotResults {
     val screenshotsOnly = mutableListOf<Uri>()
-    val fallbackImages = mutableListOf<Uri>()
+    val allImages = mutableListOf<Uri>()
 
     val projection = arrayOf(
         MediaStore.Images.Media._ID,
@@ -496,22 +484,18 @@ fun fetchScreenshotsData(context: Context): ScreenshotData {
             if (name.contains("Screenshot", ignoreCase = true)) {
                 screenshotsOnly.add(contentUri)
             }
-            
-            // Collect any image as fallback (limited for performance)
-            if (fallbackImages.size < 50) {
-                fallbackImages.add(contentUri)
-            }
+            allImages.add(contentUri)
         }
     }
     
-    // Logic: Use screenshots if found, otherwise fallback to any recent images (for emulators)
+    // Logic: Use screenshots if found, otherwise fallback to any recent images
     val hasScreenshots = screenshotsOnly.isNotEmpty()
-    val fullList = if (hasScreenshots) screenshotsOnly else fallbackImages
+    val finalAllList = if (hasScreenshots) screenshotsOnly else allImages
     
-    return ScreenshotData(
-        recent = fullList.take(10),
-        all = fullList,
-        totalCount = fullList.size
+    return ScreenshotResults(
+        recent = finalAllList.take(10),
+        all = finalAllList,
+        totalCount = if (hasScreenshots) screenshotsOnly.size else 0
     )
 }
 
