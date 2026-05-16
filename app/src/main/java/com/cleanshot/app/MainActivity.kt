@@ -21,6 +21,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -118,7 +121,7 @@ fun getStorageInfo(context: Context): StorageInfo {
 }
 
 /**
- * The Root Composable that handles Navigation, Data Loading, and Selection/Deletion logic
+ * The Root Composable that handles Navigation, Data Loading, and Selection logic
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -144,7 +147,6 @@ fun MainContainer() {
             // Success! Refresh data and clear selection
             screenshotData = fetchScreenshotsData(context)
             selectedUris = emptySet()
-            // If we were in viewer and deleted, go back to library
             if (currentScreen == Screen.Viewer) {
                 currentScreen = Screen.Library
             }
@@ -242,7 +244,7 @@ fun MainContainer() {
                         }
                     },
                     onScreenshotClick = { uri ->
-                        initialViewerIndex = screenshotData.all.indexOf(uri)
+                        initialViewerIndex = screenshotData.all.indexOf(uri).coerceAtLeast(0)
                         currentScreen = Screen.Viewer
                     }
                 )
@@ -273,16 +275,8 @@ fun MainContainer() {
                     Button(
                         onClick = {
                             showDeleteDialog = false
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                                val pendingIntent = MediaStore.createDeleteRequest(context.contentResolver, selectedUris.toList())
-                                val request = IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+                            initiateDeletion(context, selectedUris.toList()) { request ->
                                 deleteLauncher.launch(request)
-                            } else {
-                                // Fallback for older versions
-                                selectedUris.forEach { context.contentResolver.delete(it, null, null) }
-                                screenshotData = fetchScreenshotsData(context)
-                                selectedUris = emptySet()
-                                if (currentScreen == Screen.Viewer) currentScreen = Screen.Library
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
@@ -314,14 +308,22 @@ fun FullscreenViewer(
     val context = LocalContext.current
     val pagerState = rememberPagerState(initialPage = initialIndex, pageCount = { screenshots.size })
     var showInfoSheet by remember { mutableStateOf(false) }
+    var uiVisible by remember { mutableStateOf(true) }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .combinedClickable(
+                onClick = { uiVisible = !uiVisible },
+                onDoubleClick = { /* Zoom logic later */ }
+            )
+    ) {
         // Horizontal Pager for swiping between images
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize(),
-            pageSpacing = 16.dp,
-            contentPadding = PaddingValues(0.dp)
+            pageSpacing = 16.dp
         ) { page ->
             AsyncImage(
                 model = screenshots[page],
@@ -331,31 +333,37 @@ fun FullscreenViewer(
             )
         }
 
-        // Custom Top Bar for Viewer
-        TopAppBar(
-            title = { },
-            navigationIcon = {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
-                }
-            },
-            actions = {
-                IconButton(onClick = { shareScreenshot(context, screenshots[pagerState.currentPage]) }) {
-                    Icon(Icons.Default.Share, contentDescription = "Share", tint = Color.White)
-                }
-                IconButton(onClick = { onDelete(screenshots[pagerState.currentPage]) }) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.White)
-                }
-                IconButton(onClick = { showInfoSheet = true }) {
-                    Icon(Icons.Default.Info, contentDescription = "Info", tint = Color.White)
-                }
-            },
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = Color.Black.copy(alpha = 0.5f),
-                navigationIconContentColor = Color.White,
-                actionIconContentColor = Color.White
+        // Immersive Top Bar
+        AnimatedVisibility(
+            visible = uiVisible,
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
+            TopAppBar(
+                title = { },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { shareScreenshot(context, screenshots[pagerState.currentPage]) }) {
+                        Icon(Icons.Default.Share, contentDescription = "Share", tint = Color.White)
+                    }
+                    IconButton(onClick = { onDelete(screenshots[pagerState.currentPage]) }) {
+                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.White)
+                    }
+                    IconButton(onClick = { showInfoSheet = true }) {
+                        Icon(Icons.Default.Info, contentDescription = "Info", tint = Color.White)
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Black.copy(alpha = 0.5f),
+                    navigationIconContentColor = Color.White,
+                    actionIconContentColor = Color.White
+                )
             )
-        )
+        }
     }
 
     if (showInfoSheet) {
@@ -454,6 +462,24 @@ fun getScreenshotDetails(context: Context, uri: Uri): Map<String, String> {
     return details
 }
 
+/**
+ * Helper to initiate media deletion.
+ */
+fun initiateDeletion(
+    context: Context,
+    uris: List<Uri>,
+    onIntentSenderReady: (IntentSenderRequest) -> Unit
+) {
+    if (uris.isEmpty()) return
+    
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        val pendingIntent = MediaStore.createDeleteRequest(context.contentResolver, uris)
+        onIntentSenderReady(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
+    } else {
+        uris.forEach { context.contentResolver.delete(it, null, null) }
+    }
+}
+
 @Composable
 fun HomeScreen(
     storageInfo: StorageInfo,
@@ -463,46 +489,31 @@ fun HomeScreen(
     onScreenshotClick: (Uri) -> Unit
 ) {
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp),
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
         item {
             Column(modifier = Modifier.padding(top = 8.dp)) {
-                Text(
-                    text = "Hello there,",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = "Ready to clean up?",
-                    style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
-                )
+                Text(text = "Hello there,", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(text = "Ready to clean up?", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
             }
         }
-
         item { StorageCard(storageInfo) }
         item { QuickActionsRow() }
-        
+        item { ScreenshotCountCard(totalCount) }
         item { 
-            ScreenshotCountCard(totalCount) 
-        }
-
-        item {
             RecentScreenshotsSection(
-                recentScreenshots, 
-                onViewAllClick,
+                screenshots = recentScreenshots, 
+                onViewAllClick = onViewAllClick,
                 onScreenshotClick = onScreenshotClick
-            )
+            ) 
         }
-
         item { Spacer(modifier = Modifier.height(16.dp)) }
     }
 }
 
 /**
- * Updated Library Screen with Multi-Select and Click-to-View Support
+ * Updated Library Screen with Multi-Select and View Support
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -513,16 +524,10 @@ fun LibraryScreen(
     onScreenshotClick: (Uri) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-        Text(
-            text = "Your Collection (${allScreenshots.size})",
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-            modifier = Modifier.padding(vertical = 16.dp)
-        )
+        Text(text = "Your Collection (${allScreenshots.size})", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), modifier = Modifier.padding(vertical = 16.dp))
         
         if (allScreenshots.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No images found.")
-            }
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No images found.") }
         } else {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(3),
@@ -533,7 +538,6 @@ fun LibraryScreen(
             ) {
                 items(allScreenshots) { uri ->
                     val isSelected = selectedUris.contains(uri)
-                    
                     Box(
                         modifier = Modifier
                             .aspectRatio(0.6f)
@@ -541,15 +545,10 @@ fun LibraryScreen(
                             .background(MaterialTheme.colorScheme.surfaceVariant)
                             .combinedClickable(
                                 onClick = {
-                                    if (selectedUris.isNotEmpty()) {
-                                        onToggleSelection(uri)
-                                    } else {
-                                        onScreenshotClick(uri)
-                                    }
+                                    if (selectedUris.isNotEmpty()) onToggleSelection(uri)
+                                    else onScreenshotClick(uri)
                                 },
-                                onLongClick = {
-                                    onToggleSelection(uri)
-                                }
+                                onLongClick = { onToggleSelection(uri) }
                             )
                     ) {
                         AsyncImage(
@@ -559,25 +558,10 @@ fun LibraryScreen(
                             contentScale = ContentScale.Crop,
                             alpha = if (isSelected) 0.5f else 1.0f
                         )
-                        
                         if (isSelected) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
-                                contentAlignment = Alignment.TopEnd
-                            ) {
-                                Surface(
-                                    modifier = Modifier.padding(8.dp),
-                                    shape = CircleShape,
-                                    color = MaterialTheme.colorScheme.primary
-                                ) {
-                                    Icon(
-                                        Icons.Default.Check,
-                                        contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(16.dp).padding(2.dp)
-                                    )
+                            Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)), contentAlignment = Alignment.TopEnd) {
+                                Surface(modifier = Modifier.padding(8.dp), shape = CircleShape, color = MaterialTheme.colorScheme.primary) {
+                                    Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp).padding(2.dp))
                                 }
                             }
                         }
@@ -590,51 +574,18 @@ fun LibraryScreen(
 
 @Composable
 fun StorageCard(info: StorageInfo) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer
-        )
-    ) {
+    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
         Column(modifier = Modifier.padding(24.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "Storage Used",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("Storage Used", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
                 Icon(Icons.Default.Storage, contentDescription = null)
             }
             Spacer(modifier = Modifier.height(16.dp))
-            LinearProgressIndicator(
-                progress = { info.progress },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(12.dp)
-                    .clip(RoundedCornerShape(6.dp)),
-                color = MaterialTheme.colorScheme.primary,
-                trackColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.1f)
-            )
+            LinearProgressIndicator(progress = { info.progress }, modifier = Modifier.fillMaxWidth().height(12.dp).clip(RoundedCornerShape(6.dp)), color = MaterialTheme.colorScheme.primary, trackColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.1f))
             Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    "${info.usedSpace} of ${info.totalSpace} used",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-                Text(
-                    "${info.freeSpace} free",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("${info.usedSpace} of ${info.totalSpace} used", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                Text("${info.freeSpace} free", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f))
             }
         }
     }
@@ -642,10 +593,7 @@ fun StorageCard(info: StorageInfo) {
 
 @Composable
 fun QuickActionsRow() {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         QuickActionButton("Scan", Icons.Default.Search, Modifier.weight(1f))
         QuickActionButton("Organize", Icons.Default.AutoAwesome, Modifier.weight(1f))
         QuickActionButton("Cleanup", Icons.Default.DeleteSweep, Modifier.weight(1f))
@@ -654,16 +602,8 @@ fun QuickActionsRow() {
 
 @Composable
 fun QuickActionButton(label: String, icon: ImageVector, modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        onClick = { }
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
+    Surface(modifier = modifier, shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.secondaryContainer, onClick = { }) {
+        Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(icon, contentDescription = label, tint = MaterialTheme.colorScheme.onSecondaryContainer)
             Spacer(modifier = Modifier.height(8.dp))
             Text(label, style = MaterialTheme.typography.labelLarge)
@@ -673,25 +613,9 @@ fun QuickActionButton(label: String, icon: ImageVector, modifier: Modifier = Mod
 
 @Composable
 fun ScreenshotCountCard(count: Int) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .padding(24.dp)
-                .fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.Center
-            ) {
+    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Row(modifier = Modifier.padding(24.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Box(modifier = Modifier.size(48.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
                 Icon(Icons.Default.Image, contentDescription = null, tint = Color.White)
             }
             Spacer(modifier = Modifier.width(16.dp))
@@ -710,27 +634,15 @@ fun RecentScreenshotsSection(
     onScreenshotClick: (Uri) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                "Recent Screenshots",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-            )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("Recent Screenshots", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
             TextButton(onClick = onViewAllClick) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("View All")
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp).padding(start = 4.dp)
-                    )
+                    Icon(imageVector = Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp).padding(start = 4.dp))
                 }
             }
         }
-        
         if (screenshots.isEmpty()) {
             Text("No images found.", style = MaterialTheme.typography.bodyMedium)
         } else {
@@ -754,87 +666,37 @@ fun RecentScreenshotsSection(
 
 @Composable
 fun BottomNavigationBar(selectedScreen: Screen, onScreenSelected: (Screen) -> Unit) {
-    NavigationBar(
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-    ) {
-        NavigationBarItem(
-            selected = selectedScreen == Screen.Home,
-            onClick = { onScreenSelected(Screen.Home) },
-            icon = { Icon(Icons.Default.Dashboard, contentDescription = null) },
-            label = { Text("Home") }
-        )
-        NavigationBarItem(
-            selected = selectedScreen == Screen.Library,
-            onClick = { onScreenSelected(Screen.Library) },
-            icon = { Icon(Icons.Default.Folder, contentDescription = null) },
-            label = { Text("Library") }
-        )
-        NavigationBarItem(
-            selected = selectedScreen == Screen.Settings,
-            onClick = { onScreenSelected(Screen.Settings) },
-            icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-            label = { Text("Settings") }
-        )
+    NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+        NavigationBarItem(selected = selectedScreen == Screen.Home, onClick = { onScreenSelected(Screen.Home) }, icon = { Icon(Icons.Default.Dashboard, contentDescription = null) }, label = { Text("Home") })
+        NavigationBarItem(selected = selectedScreen == Screen.Library, onClick = { onScreenSelected(Screen.Library) }, icon = { Icon(Icons.Default.Folder, contentDescription = null) }, label = { Text("Library") })
+        NavigationBarItem(selected = selectedScreen == Screen.Settings, onClick = { onScreenSelected(Screen.Settings) }, icon = { Icon(Icons.Default.Settings, contentDescription = null) }, label = { Text("Settings") })
     }
 }
 
-/**
- * Improved MediaStore query to return ALL data
- */
 fun fetchScreenshotsData(context: Context): ScreenshotResults {
     val screenshotsOnly = mutableListOf<Uri>()
     val allImages = mutableListOf<Uri>()
-
-    val projection = arrayOf(
-        MediaStore.Images.Media._ID,
-        MediaStore.Images.Media.DISPLAY_NAME,
-        MediaStore.Images.Media.DATE_TAKEN
-    )
-
+    val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.DATE_TAKEN)
     val sortOrder = "${MediaStore.Images.Media.DATE_TAKEN} DESC"
-
-    val query = context.contentResolver.query(
-        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-        projection,
-        null,
-        null,
-        sortOrder
-    )
-
+    val query = context.contentResolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, null, null, sortOrder)
     query?.use { cursor ->
         val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
         val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
-
         while (cursor.moveToNext()) {
             val id = cursor.getLong(idColumn)
             val name = cursor.getString(nameColumn) ?: ""
-
-            val contentUri = ContentUris.withAppendedId(
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                id
-            )
-            
-            if (name.contains("Screenshot", ignoreCase = true)) {
-                screenshotsOnly.add(contentUri)
-            }
+            val contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
+            if (name.contains("Screenshot", ignoreCase = true)) screenshotsOnly.add(contentUri)
             allImages.add(contentUri)
         }
     }
-    
     val hasScreenshots = screenshotsOnly.isNotEmpty()
     val finalAllList = if (hasScreenshots) screenshotsOnly else allImages
-    
-    return ScreenshotResults(
-        recent = finalAllList.take(10),
-        all = finalAllList,
-        totalCount = if (hasScreenshots) screenshotsOnly.size else 0
-    )
+    return ScreenshotResults(recent = finalAllList.take(10), all = finalAllList, totalCount = if (hasScreenshots) screenshotsOnly.size else 0)
 }
 
 @Preview(showBackground = true, showSystemUi = true)
 @Composable
 fun DashboardPreview() {
-    CleanShotTheme(darkTheme = true) {
-        MainContainer()
-    }
+    CleanShotTheme(darkTheme = true) { MainContainer() }
 }
