@@ -26,7 +26,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -51,12 +53,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import coil.compose.AsyncImage
 import com.cleanshot.app.ui.theme.CleanShotTheme
+import java.util.ArrayList
 import java.util.Date
 
 class MainActivity : ComponentActivity() {
@@ -191,7 +198,7 @@ fun MainContainer() {
                         )
                     )
                 } else {
-                    // Selection Mode Top Bar
+                    // PROBLEM 2 FIXED: Multi-Select Toolbar with Share
                     TopAppBar(
                         title = { Text("${selectedUris.size} selected") },
                         navigationIcon = {
@@ -200,6 +207,9 @@ fun MainContainer() {
                             }
                         },
                         actions = {
+                            IconButton(onClick = { shareScreenshots(context, selectedUris.toList()) }) {
+                                Icon(Icons.Default.Share, contentDescription = "Share selected")
+                            }
                             IconButton(onClick = { showDeleteDialog = true }) {
                                 Icon(Icons.Default.Delete, contentDescription = "Delete selected")
                             }
@@ -295,7 +305,7 @@ fun MainContainer() {
 }
 
 /**
- * 2. Full Screen Image Viewer Composable
+ * 2. PROBLEM 1 & STATUS BAR FIXED: Full Screen Image Viewer Composable
  */
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -306,63 +316,111 @@ fun FullscreenViewer(
     onDelete: (Uri) -> Unit
 ) {
     val context = LocalContext.current
+    val view = LocalView.current
     val pagerState = rememberPagerState(initialPage = initialIndex, pageCount = { screenshots.size })
     var showInfoSheet by remember { mutableStateOf(false) }
     var uiVisible by remember { mutableStateOf(true) }
+
+    // Logic to hide/show status bar and navigation bar
+    val window = (context as? Activity)?.window
+    if (window != null) {
+        val controller = remember { WindowCompat.getInsetsController(window, view) }
+        LaunchedEffect(uiVisible) {
+            if (uiVisible) {
+                controller.show(WindowInsetsCompat.Type.systemBars())
+            } else {
+                controller.hide(WindowInsetsCompat.Type.systemBars())
+                controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+        }
+        DisposableEffect(Unit) {
+            onDispose {
+                controller.show(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+    }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .combinedClickable(
-                onClick = { uiVisible = !uiVisible },
-                onDoubleClick = { /* Zoom logic later */ }
-            )
     ) {
         // Horizontal Pager for swiping between images
         HorizontalPager(
             state = pagerState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) { uiVisible = !uiVisible },
             pageSpacing = 16.dp
         ) { page ->
             AsyncImage(
                 model = screenshots[page],
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit
+                contentScale = ContentScale.Fit,
+                alignment = Alignment.Center
             )
         }
 
-        // Immersive Top Bar
+        // Immersive Top Bar Overlay (Centered page count and Back button)
         AnimatedVisibility(
             visible = uiVisible,
             enter = fadeIn(),
-            exit = fadeOut()
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.TopCenter)
         ) {
-            TopAppBar(
-                title = { },
+            CenterAlignedTopAppBar(
+                title = {
+                    Text(
+                        text = "${pagerState.currentPage + 1} / ${screenshots.size}",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
                     }
                 },
-                actions = {
-                    IconButton(onClick = { shareScreenshot(context, screenshots[pagerState.currentPage]) }) {
-                        Icon(Icons.Default.Share, contentDescription = "Share", tint = Color.White)
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = Color.Black.copy(alpha = 0.5f)
+                )
+            )
+        }
+
+        // Immersive Bottom Bar Overlay (Info, Delete, Share)
+        AnimatedVisibility(
+            visible = uiVisible,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            Surface(
+                color = Color.Black.copy(alpha = 0.5f),
+                contentColor = Color.White
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 12.dp)
+                        .navigationBarsPadding(),
+                    horizontalArrangement = Arrangement.SpaceAround,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = { showInfoSheet = true }) {
+                        Icon(Icons.Default.Info, contentDescription = "Info", tint = Color.White)
                     }
                     IconButton(onClick = { onDelete(screenshots[pagerState.currentPage]) }) {
                         Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.White)
                     }
-                    IconButton(onClick = { showInfoSheet = true }) {
-                        Icon(Icons.Default.Info, contentDescription = "Info", tint = Color.White)
+                    IconButton(onClick = { shareScreenshots(context, listOf(screenshots[pagerState.currentPage])) }) {
+                        Icon(Icons.Default.Share, contentDescription = "Share", tint = Color.White)
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Black.copy(alpha = 0.5f),
-                    navigationIconContentColor = Color.White,
-                    actionIconContentColor = Color.White
-                )
-            )
+                }
+            }
         }
     }
 
@@ -375,15 +433,23 @@ fun FullscreenViewer(
 }
 
 /**
- * 3. Share Feature Logic
+ * 3. PROBLEM 2 FIXED: Share Feature Logic - Supports single and multi-selection
  */
-fun shareScreenshot(context: Context, uri: Uri) {
-    val intent = Intent(Intent.ACTION_SEND).apply {
-        type = "image/*"
-        putExtra(Intent.EXTRA_STREAM, uri)
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+fun shareScreenshots(context: Context, uris: List<Uri>) {
+    if (uris.isEmpty()) return
+    val intent = if (uris.size == 1) {
+        Intent(Intent.ACTION_SEND).apply {
+            type = "image/*"
+            putExtra(Intent.EXTRA_STREAM, uris[0])
+        }
+    } else {
+        Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+            type = "image/*"
+            putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
+        }
     }
-    context.startActivity(Intent.createChooser(intent, "Share Screenshot"))
+    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    context.startActivity(Intent.createChooser(intent, "Share Screenshots"))
 }
 
 /**
@@ -627,6 +693,7 @@ fun ScreenshotCountCard(count: Int) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun RecentScreenshotsSection(
     screenshots: List<Uri>,
