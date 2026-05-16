@@ -1,9 +1,11 @@
 package com.cleanshot.app
 
 import android.Manifest
+import android.app.Activity
 import android.app.usage.StorageStatsManager
 import android.content.ContentUris
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -17,8 +19,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -26,8 +31,12 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -45,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
 import com.cleanshot.app.ui.theme.CleanShotTheme
+import java.util.Date
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -59,9 +69,9 @@ class MainActivity : ComponentActivity() {
 }
 
 /**
- * Navigation Setup
+ * 1. Navigation Setup
  */
-enum class Screen { Home, Library, Settings }
+enum class Screen { Home, Library, Settings, Viewer }
 
 /**
  * Data class to hold screenshot results
@@ -84,46 +94,31 @@ data class StorageInfo(
 
 /**
  * Helper function to calculate REAL device storage.
- * Updated to get physical storage capacity and match Android Settings.
  */
 fun getStorageInfo(context: Context): StorageInfo {
-    // StatFs gives us info about the Data partition
     val stat = StatFs(Environment.getDataDirectory().path)
-    
-    // 1. Get Total Physical Storage Capacity (e.g. 64 GB)
-    // On Android 8.0+ we can get the total physical capacity of the primary storage
-    val totalBytes = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+    var totalBytes: Long = 0
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         try {
             val statsManager = context.getSystemService(Context.STORAGE_STATS_SERVICE) as StorageStatsManager
-            // This returns the total physical capacity of the primary storage volume
-            statsManager.getTotalBytes(StorageManager.UUID_DEFAULT)
+            totalBytes = statsManager.getTotalBytes(StorageManager.UUID_DEFAULT)
         } catch (e: Exception) {
-            stat.totalBytes
+            totalBytes = stat.totalBytes
         }
     } else {
-        stat.totalBytes
+        totalBytes = stat.totalBytes
     }
-
-    // 2. Get Free Space (Actual available space on user data partition)
     val freeBytes = stat.availableBytes
-    
-    // 3. Calculate Used Space = Total Capacity - Free Space
-    // This calculation includes system/firmware in 'Used', matching System Settings
     val usedBytes = totalBytes - freeBytes
-    
-    // Format bytes to human readable strings (GB, MB)
     val totalSpaceStr = Formatter.formatShortFileSize(context, totalBytes)
     val usedSpaceStr = Formatter.formatShortFileSize(context, usedBytes)
     val freeSpaceStr = Formatter.formatShortFileSize(context, freeBytes)
-    
-    // Progress for the UI bar (0.0 to 1.0)
     val progress = if (totalBytes > 0) usedBytes.toFloat() / totalBytes.toFloat() else 0f
-    
     return StorageInfo(totalSpaceStr, usedSpaceStr, freeSpaceStr, progress)
 }
 
 /**
- * The Root Composable that handles Navigation and Data Loading
+ * The Root Composable that handles Navigation, Data Loading, and Selection/Deletion logic
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -132,7 +127,29 @@ fun MainContainer() {
     var currentScreen by remember { mutableStateOf(Screen.Home) }
     var screenshotData by remember { mutableStateOf(ScreenshotResults(emptyList(), emptyList(), 0)) }
     
-    val storageInfo = remember(screenshotData.recent) { getStorageInfo(context) }
+    // Selection and Deletion State
+    var selectedUris by remember { mutableStateOf(setOf<Uri>()) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
+    // Viewer state
+    var initialViewerIndex by remember { mutableIntStateOf(0) }
+
+    val storageInfo = remember(screenshotData) { getStorageInfo(context) }
+
+    // Launcher for handling the system delete confirmation (Required for Android 11+)
+    val deleteLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            // Success! Refresh data and clear selection
+            screenshotData = fetchScreenshotsData(context)
+            selectedUris = emptySet()
+            // If we were in viewer and deleted, go back to library
+            if (currentScreen == Screen.Viewer) {
+                currentScreen = Screen.Library
+            }
+        }
+    }
 
     val permissionNeeded = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_IMAGES
@@ -140,7 +157,7 @@ fun MainContainer() {
         Manifest.permission.READ_EXTERNAL_STORAGE
     }
 
-    val launcher = rememberLauncherForActivityResult(
+    val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
@@ -149,48 +166,292 @@ fun MainContainer() {
     }
 
     LaunchedEffect(Unit) {
-        val isGranted = ContextCompat.checkSelfPermission(context, permissionNeeded) == PackageManager.PERMISSION_GRANTED
-        if (isGranted) {
+        if (ContextCompat.checkSelfPermission(context, permissionNeeded) == PackageManager.PERMISSION_GRANTED) {
             screenshotData = fetchScreenshotsData(context)
         } else {
-            launcher.launch(permissionNeeded)
+            permissionLauncher.launch(permissionNeeded)
         }
     }
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Text(
-                        text = if (currentScreen == Screen.Home) "CleanShot" else currentScreen.name,
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+            if (currentScreen != Screen.Viewer) {
+                if (selectedUris.isEmpty()) {
+                    CenterAlignedTopAppBar(
+                        title = {
+                            Text(
+                                text = if (currentScreen == Screen.Home) "CleanShot" else currentScreen.name,
+                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                            )
+                        },
+                        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.background
+                        )
                     )
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
-            )
+                } else {
+                    // Selection Mode Top Bar
+                    TopAppBar(
+                        title = { Text("${selectedUris.size} selected") },
+                        navigationIcon = {
+                            IconButton(onClick = { selectedUris = emptySet() }) {
+                                Icon(Icons.Default.Close, contentDescription = "Clear selection")
+                            }
+                        },
+                        actions = {
+                            IconButton(onClick = { showDeleteDialog = true }) {
+                                Icon(Icons.Default.Delete, contentDescription = "Delete selected")
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer
+                        )
+                    )
+                }
+            }
         },
         bottomBar = {
-            BottomNavigationBar(currentScreen) { currentScreen = it }
+            if (currentScreen != Screen.Viewer) {
+                BottomNavigationBar(currentScreen) { 
+                    currentScreen = it 
+                    selectedUris = emptySet() // Clear selection when switching screens
+                }
+            }
         },
-        containerColor = MaterialTheme.colorScheme.background
+        containerColor = if (currentScreen == Screen.Viewer) Color.Black else MaterialTheme.colorScheme.background
     ) { innerPadding ->
-        Box(modifier = Modifier.padding(innerPadding)) {
+        Box(modifier = Modifier.padding(if (currentScreen == Screen.Viewer) PaddingValues(0.dp) else innerPadding)) {
             when (currentScreen) {
                 Screen.Home -> HomeScreen(
                     storageInfo = storageInfo,
                     totalCount = screenshotData.totalCount,
                     recentScreenshots = screenshotData.recent,
-                    onViewAllClick = { currentScreen = Screen.Library }
+                    onViewAllClick = { currentScreen = Screen.Library },
+                    onScreenshotClick = { uri ->
+                        initialViewerIndex = screenshotData.all.indexOf(uri).coerceAtLeast(0)
+                        currentScreen = Screen.Viewer
+                    }
                 )
-                Screen.Library -> LibraryScreen(screenshotData.all)
+                Screen.Library -> LibraryScreen(
+                    allScreenshots = screenshotData.all,
+                    selectedUris = selectedUris,
+                    onToggleSelection = { uri ->
+                        selectedUris = if (selectedUris.contains(uri)) {
+                            selectedUris - uri
+                        } else {
+                            selectedUris + uri
+                        }
+                    },
+                    onScreenshotClick = { uri ->
+                        initialViewerIndex = screenshotData.all.indexOf(uri)
+                        currentScreen = Screen.Viewer
+                    }
+                )
+                Screen.Viewer -> {
+                    FullscreenViewer(
+                        screenshots = screenshotData.all,
+                        initialIndex = initialViewerIndex,
+                        onBack = { currentScreen = Screen.Library },
+                        onDelete = { uri ->
+                            selectedUris = setOf(uri)
+                            showDeleteDialog = true
+                        }
+                    )
+                }
                 Screen.Settings -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("Settings screen coming soon!")
                 }
             }
         }
+
+        // Delete Confirmation Dialog
+        if (showDeleteDialog) {
+            AlertDialog(
+                onDismissRequest = { showDeleteDialog = false },
+                title = { Text("Delete Screenshots") },
+                text = { Text("Are you sure you want to delete ${if (currentScreen == Screen.Viewer) "this screenshot" else "${selectedUris.size} screenshots"}? This action cannot be undone.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showDeleteDialog = false
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                                val pendingIntent = MediaStore.createDeleteRequest(context.contentResolver, selectedUris.toList())
+                                val request = IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+                                deleteLauncher.launch(request)
+                            } else {
+                                // Fallback for older versions
+                                selectedUris.forEach { context.contentResolver.delete(it, null, null) }
+                                screenshotData = fetchScreenshotsData(context)
+                                selectedUris = emptySet()
+                                if (currentScreen == Screen.Viewer) currentScreen = Screen.Library
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("Delete")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
     }
+}
+
+/**
+ * 2. Full Screen Image Viewer Composable
+ */
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
+@Composable
+fun FullscreenViewer(
+    screenshots: List<Uri>,
+    initialIndex: Int,
+    onBack: () -> Unit,
+    onDelete: (Uri) -> Unit
+) {
+    val context = LocalContext.current
+    val pagerState = rememberPagerState(initialPage = initialIndex, pageCount = { screenshots.size })
+    var showInfoSheet by remember { mutableStateOf(false) }
+
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+        // Horizontal Pager for swiping between images
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize(),
+            pageSpacing = 16.dp,
+            contentPadding = PaddingValues(0.dp)
+        ) { page ->
+            AsyncImage(
+                model = screenshots[page],
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit
+            )
+        }
+
+        // Custom Top Bar for Viewer
+        TopAppBar(
+            title = { },
+            navigationIcon = {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                }
+            },
+            actions = {
+                IconButton(onClick = { shareScreenshot(context, screenshots[pagerState.currentPage]) }) {
+                    Icon(Icons.Default.Share, contentDescription = "Share", tint = Color.White)
+                }
+                IconButton(onClick = { onDelete(screenshots[pagerState.currentPage]) }) {
+                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.White)
+                }
+                IconButton(onClick = { showInfoSheet = true }) {
+                    Icon(Icons.Default.Info, contentDescription = "Info", tint = Color.White)
+                }
+            },
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = Color.Black.copy(alpha = 0.5f),
+                navigationIconContentColor = Color.White,
+                actionIconContentColor = Color.White
+            )
+        )
+    }
+
+    if (showInfoSheet) {
+        ScreenshotInfoSheet(
+            uri = screenshots[pagerState.currentPage],
+            onDismiss = { showInfoSheet = false }
+        )
+    }
+}
+
+/**
+ * 3. Share Feature Logic
+ */
+fun shareScreenshot(context: Context, uri: Uri) {
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "image/*"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(intent, "Share Screenshot"))
+}
+
+/**
+ * 4. Screenshot Info Bottom Sheet
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ScreenshotInfoSheet(uri: Uri, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val details = remember(uri) { getScreenshotDetails(context, uri) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surface,
+        dragHandle = { BottomSheetDefaults.DragHandle() }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                "Details",
+                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
+            )
+            
+            details.forEach { (label, value) ->
+                Column {
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        value,
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Helper to fetch detailed info from MediaStore
+ */
+fun getScreenshotDetails(context: Context, uri: Uri): Map<String, String> {
+    val details = mutableMapOf<String, String>()
+    val projection = arrayOf(
+        MediaStore.Images.Media.DISPLAY_NAME,
+        MediaStore.Images.Media.SIZE,
+        MediaStore.Images.Media.DATE_ADDED,
+        MediaStore.Images.Media.WIDTH,
+        MediaStore.Images.Media.HEIGHT,
+        MediaStore.Images.Media.DATA
+    )
+
+    context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+        if (cursor.moveToFirst()) {
+            val name = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME))
+            val size = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE))
+            val date = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED))
+            val width = cursor.getInt(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.WIDTH))
+            val height = cursor.getInt(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.HEIGHT))
+            val path = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA))
+
+            details["Name"] = name
+            details["Size"] = Formatter.formatShortFileSize(context, size)
+            details["Date"] = Date(date * 1000).toString()
+            details["Resolution"] = "${width}x${height}"
+            details["Path"] = path
+        }
+    }
+    return details
 }
 
 @Composable
@@ -198,7 +459,8 @@ fun HomeScreen(
     storageInfo: StorageInfo,
     totalCount: Int,
     recentScreenshots: List<Uri>,
-    onViewAllClick: () -> Unit
+    onViewAllClick: () -> Unit,
+    onScreenshotClick: (Uri) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier
@@ -228,7 +490,11 @@ fun HomeScreen(
         }
 
         item {
-            RecentScreenshotsSection(recentScreenshots, onViewAllClick)
+            RecentScreenshotsSection(
+                recentScreenshots, 
+                onViewAllClick,
+                onScreenshotClick = onScreenshotClick
+            )
         }
 
         item { Spacer(modifier = Modifier.height(16.dp)) }
@@ -236,10 +502,16 @@ fun HomeScreen(
 }
 
 /**
- * 2. New Library Screen with ALL Screenshots in a Grid
+ * Updated Library Screen with Multi-Select and Click-to-View Support
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun LibraryScreen(allScreenshots: List<Uri>) {
+fun LibraryScreen(
+    allScreenshots: List<Uri>,
+    selectedUris: Set<Uri>,
+    onToggleSelection: (Uri) -> Unit,
+    onScreenshotClick: (Uri) -> Unit
+) {
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Text(
             text = "Your Collection (${allScreenshots.size})",
@@ -249,7 +521,7 @@ fun LibraryScreen(allScreenshots: List<Uri>) {
         
         if (allScreenshots.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No screenshots found.")
+                Text("No images found.")
             }
         } else {
             LazyVerticalGrid(
@@ -260,15 +532,56 @@ fun LibraryScreen(allScreenshots: List<Uri>) {
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
                 items(allScreenshots) { uri ->
-                    AsyncImage(
-                        model = uri,
-                        contentDescription = "Screenshot",
+                    val isSelected = selectedUris.contains(uri)
+                    
+                    Box(
                         modifier = Modifier
                             .aspectRatio(0.6f)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant),
-                        contentScale = ContentScale.Crop
-                    )
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .combinedClickable(
+                                onClick = {
+                                    if (selectedUris.isNotEmpty()) {
+                                        onToggleSelection(uri)
+                                    } else {
+                                        onScreenshotClick(uri)
+                                    }
+                                },
+                                onLongClick = {
+                                    onToggleSelection(uri)
+                                }
+                            )
+                    ) {
+                        AsyncImage(
+                            model = uri,
+                            contentDescription = "Screenshot",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                            alpha = if (isSelected) 0.5f else 1.0f
+                        )
+                        
+                        if (isSelected) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                                contentAlignment = Alignment.TopEnd
+                            ) {
+                                Surface(
+                                    modifier = Modifier.padding(8.dp),
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.primary
+                                ) {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp).padding(2.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -298,7 +611,6 @@ fun StorageCard(info: StorageInfo) {
                 Icon(Icons.Default.Storage, contentDescription = null)
             }
             Spacer(modifier = Modifier.height(16.dp))
-            
             LinearProgressIndicator(
                 progress = { info.progress },
                 modifier = Modifier
@@ -309,7 +621,6 @@ fun StorageCard(info: StorageInfo) {
                 trackColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.1f)
             )
             Spacer(modifier = Modifier.height(8.dp))
-            
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -347,7 +658,7 @@ fun QuickActionButton(label: String, icon: ImageVector, modifier: Modifier = Mod
         modifier = modifier,
         shape = RoundedCornerShape(20.dp),
         color = MaterialTheme.colorScheme.secondaryContainer,
-        onClick = { /* Action later */ }
+        onClick = { }
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -392,11 +703,12 @@ fun ScreenshotCountCard(count: Int) {
     }
 }
 
-/**
- * 3. Recent Section with "View All" Button
- */
 @Composable
-fun RecentScreenshotsSection(screenshots: List<Uri>, onViewAllClick: () -> Unit) {
+fun RecentScreenshotsSection(
+    screenshots: List<Uri>,
+    onViewAllClick: () -> Unit,
+    onScreenshotClick: (Uri) -> Unit
+) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -420,7 +732,7 @@ fun RecentScreenshotsSection(screenshots: List<Uri>, onViewAllClick: () -> Unit)
         }
         
         if (screenshots.isEmpty()) {
-            Text("No images found. Try taking a screenshot!", style = MaterialTheme.typography.bodyMedium)
+            Text("No images found.", style = MaterialTheme.typography.bodyMedium)
         } else {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(screenshots) { uri ->
@@ -430,7 +742,8 @@ fun RecentScreenshotsSection(screenshots: List<Uri>, onViewAllClick: () -> Unit)
                         modifier = Modifier
                             .size(120.dp, 200.dp)
                             .clip(RoundedCornerShape(16.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .combinedClickable(onClick = { onScreenshotClick(uri) }),
                         contentScale = ContentScale.Crop
                     )
                 }
@@ -466,7 +779,7 @@ fun BottomNavigationBar(selectedScreen: Screen, onScreenSelected: (Screen) -> Un
 }
 
 /**
- * 4. Improved MediaStore query to return ALL data
+ * Improved MediaStore query to return ALL data
  */
 fun fetchScreenshotsData(context: Context): ScreenshotResults {
     val screenshotsOnly = mutableListOf<Uri>()
@@ -508,7 +821,6 @@ fun fetchScreenshotsData(context: Context): ScreenshotResults {
         }
     }
     
-    // Logic: Use screenshots if found, otherwise fallback to any recent images
     val hasScreenshots = screenshotsOnly.isNotEmpty()
     val finalAllList = if (hasScreenshots) screenshotsOnly else allImages
     
