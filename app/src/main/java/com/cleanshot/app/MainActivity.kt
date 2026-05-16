@@ -1,6 +1,7 @@
 package com.cleanshot.app
 
 import android.Manifest
+import android.app.usage.StorageStatsManager
 import android.content.ContentUris
 import android.content.Context
 import android.content.pm.PackageManager
@@ -9,6 +10,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.os.StatFs
+import android.os.storage.StorageManager
 import android.provider.MediaStore
 import android.text.format.Formatter
 import androidx.activity.ComponentActivity
@@ -62,7 +64,7 @@ class MainActivity : ComponentActivity() {
 enum class Screen { Home, Library, Settings }
 
 /**
- * Data class for full screenshot information
+ * Data class to hold screenshot results
  */
 data class ScreenshotResults(
     val recent: List<Uri>,
@@ -82,21 +84,39 @@ data class StorageInfo(
 
 /**
  * Helper function to calculate REAL device storage.
+ * Updated to get physical storage capacity and match Android Settings.
  */
 fun getStorageInfo(context: Context): StorageInfo {
+    // StatFs gives us info about the Data partition
     val stat = StatFs(Environment.getDataDirectory().path)
-    val blockSize = stat.blockSizeLong
-    val totalBlocks = stat.blockCountLong
-    val availableBlocks = stat.availableBlocksLong
     
-    val totalBytes = totalBlocks * blockSize
-    val availableBytes = availableBlocks * blockSize
-    val usedBytes = totalBytes - availableBytes
+    // 1. Get Total Physical Storage Capacity (e.g. 64 GB)
+    // On Android 8.0+ we can get the total physical capacity of the primary storage
+    val totalBytes = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        try {
+            val statsManager = context.getSystemService(Context.STORAGE_STATS_SERVICE) as StorageStatsManager
+            // This returns the total physical capacity of the primary storage volume
+            statsManager.getTotalBytes(StorageManager.UUID_DEFAULT)
+        } catch (e: Exception) {
+            stat.totalBytes
+        }
+    } else {
+        stat.totalBytes
+    }
+
+    // 2. Get Free Space (Actual available space on user data partition)
+    val freeBytes = stat.availableBytes
     
+    // 3. Calculate Used Space = Total Capacity - Free Space
+    // This calculation includes system/firmware in 'Used', matching System Settings
+    val usedBytes = totalBytes - freeBytes
+    
+    // Format bytes to human readable strings (GB, MB)
     val totalSpaceStr = Formatter.formatShortFileSize(context, totalBytes)
     val usedSpaceStr = Formatter.formatShortFileSize(context, usedBytes)
-    val freeSpaceStr = Formatter.formatShortFileSize(context, availableBytes)
+    val freeSpaceStr = Formatter.formatShortFileSize(context, freeBytes)
     
+    // Progress for the UI bar (0.0 to 1.0)
     val progress = if (totalBytes > 0) usedBytes.toFloat() / totalBytes.toFloat() else 0f
     
     return StorageInfo(totalSpaceStr, usedSpaceStr, freeSpaceStr, progress)
