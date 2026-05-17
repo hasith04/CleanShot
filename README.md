@@ -64,34 +64,51 @@ CleanShot helps users organize, manage, clean, and browse screenshots with a mod
 
 ---
 
-
 ## 🚀 Installation
 
-1. Clone the repository
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/hasith04/CleanShot.git
 ```
-2. Open in Android Studio
-3.Sync Gradle
-4.Run on Android device or emulator
 
-###📦 Current Status
+### 2. Open in Android Studio
 
-Version: v0.4 Alpha
+Open the project folder in Android Studio.
+
+### 3. Sync Gradle
+
+Let Android Studio download dependencies and sync the project.
+
+### 4. Run the app
+
+Run on a physical Android device or emulator.
+
+---
+
+## 📦 Current Status
+
+**Version:** v0.4 Alpha  
 Currently under active development.
 
-###👨‍💻 Developer
+---
 
-Jai Hasith
+## 👨‍💻 Developer
 
-GitHub: https://github.com/hasith04
-Instagram: https://www.instagram.com/jaiiiiiiiii________
+### Jai Hasith
 
-###❤️ Credits
+- GitHub: https://github.com/hasith04
+- Instagram: https://www.instagram.com/jaiiiiiiiii________
+- Photography: https://www.instagram.com/pixelsofjaiii
 
-Designed and developed with Jetpack Compose and Material You inspiration.
+---
 
-###📄 License
+## ❤️ Credits
 
-This project is currently private/unlicensed.
+Designed and developed using Jetpack Compose and Material You inspiration.
+
+---
+
+## 📄 License
+
+This project is currently private / unlicensed.
