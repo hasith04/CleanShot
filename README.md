@@ -30,10 +30,6 @@ Material You screenshot organizer app built with Kotlin and Jetpack Compose.
 * [ ] OCR text detection
 * [ ] AI screenshot organization
 
-## Screenshots
-
-(Add app screenshots here later)
-
 ## Author
 
 Jai Hasith
