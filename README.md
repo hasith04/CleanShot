@@ -1,35 +1,73 @@
-# CleanShot 📸
+# 📸 CleanShot
 
-Material You screenshot organizer app built with Kotlin and Jetpack Compose.
+Modern screenshot organizer built with **Kotlin + Jetpack Compose + Material 3**.
 
-## Features
+CleanShot helps users organize, manage, clean, and browse screenshots with a modern Android experience inspired by Pixel UI and Material You.
 
-* Real screenshot detection
-* Storage analytics
-* Material You inspired UI
-* Screenshot gallery preview
-* Android 14 support
-* Built using Jetpack Compose
+---
 
-## Tech Stack
+## ✨ Features
 
-* Kotlin
-* Jetpack Compose
-* Material 3
-* MediaStore API
-* Coil Image Loading
+### 🎨 Modern UI
+- Material You dynamic theming
+- Light / Dark / Device theme modes
+- AMOLED dark mode
+- Adaptive colors based on wallpaper
+- Smooth modern Jetpack Compose UI
 
-## Current Progress
+### 🖼 Screenshot Management
+- Screenshot gallery viewer
+- Fullscreen image viewer
+- Pinch-to-zoom support
+- Double tap zoom
+- Swipe navigation
+- Multi-selection support
 
-* [x] Dashboard UI
-* [x] Real screenshot loading
-* [x] Storage analytics
-* [x] Physical device testing
-* [ ] Full library screen
-* [ ] Categories system
-* [ ] OCR text detection
-* [ ] AI screenshot organization
+### ⚡ Productivity Features
+- Screenshot organization
+- Storage usage overview
+- Manual media refresh
+- Smart screenshot browsing
+- Fast image loading
 
-## Author
+### ⚙️ Settings
+- Persistent theme preferences using DataStore
+- Viewer customization options
+- Experimental feature toggles
+- About section with developer links
 
-Jai Hasith
+---
+
+## 🚧 Planned Features
+
+- Duplicate screenshot detection
+- Smart cleanup suggestions
+- Move to trash
+- Screenshot folder picker
+- Archive system
+- Favorites
+- Storage analytics
+- AI-powered screenshot categorization
+- Blur detection
+- Cloud sync
+
+---
+
+## 🛠 Built With
+
+- Kotlin
+- Jetpack Compose
+- Material 3
+- Coil
+- DataStore Preferences
+- Android Storage APIs
+
+---
+
+
+## 🚀 Installation
+
+1. Clone the repository
+
+```bash
+git clone https://github.com/hasith04/CleanShot.git
