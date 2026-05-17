@@ -25,15 +25,15 @@ private val LightColorScheme = lightColorScheme(
 
 @Composable
 fun CleanShotTheme(
-    themeMode: ThemeMode = ThemeState.currentTheme,
-    useDynamicColors: Boolean = ThemeState.useDynamicColors,
-    useAmoledMode: Boolean = ThemeState.useAmoledMode,
+    theme: AppTheme = AppTheme.SYSTEM,
+    useDynamicColors: Boolean = true,
+    useAmoledMode: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val darkTheme = when (themeMode) {
-        ThemeMode.LIGHT -> false
-        ThemeMode.DARK -> true
-        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+    val darkTheme = when (theme) {
+        AppTheme.LIGHT -> false
+        AppTheme.DARK -> true
+        AppTheme.SYSTEM -> isSystemInDarkTheme()
     }
 
     val context = LocalContext.current

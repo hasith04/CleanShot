@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.cleanshot.app.components.BottomNavigationBar
 import com.cleanshot.app.models.Screen
 import com.cleanshot.app.models.ScreenshotResults
@@ -33,6 +34,7 @@ import com.cleanshot.app.screens.HomeScreen
 import com.cleanshot.app.screens.LibraryScreen
 import com.cleanshot.app.screens.SettingsScreen
 import com.cleanshot.app.ui.theme.CleanShotTheme
+import com.cleanshot.app.ui.theme.ThemeViewModel
 import com.cleanshot.app.utils.fetchScreenshotsData
 import com.cleanshot.app.utils.getStorageInfo
 import com.cleanshot.app.utils.initiateDeletion
@@ -46,8 +48,15 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            CleanShotTheme {
-                MainContainer()
+            val themeViewModel: ThemeViewModel = viewModel()
+            val themeSettings by themeViewModel.themeSettings.collectAsState()
+
+            CleanShotTheme(
+                theme = themeSettings.theme,
+                useDynamicColors = themeSettings.useDynamicColors,
+                useAmoledMode = themeSettings.useAmoledMode
+            ) {
+                MainContainer(themeViewModel)
             }
         }
     }
@@ -55,7 +64,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainContainer() {
+fun MainContainer(themeViewModel: ThemeViewModel) {
 
     val context = LocalContext.current
 
@@ -348,7 +357,7 @@ fun MainContainer() {
 
                 Screen.Settings -> {
 
-                    SettingsScreen()
+                    SettingsScreen(themeViewModel)
                 }
             }
         }

@@ -21,12 +21,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.cleanshot.app.ui.theme.ThemeMode
-import com.cleanshot.app.ui.theme.ThemeState
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.cleanshot.app.ui.theme.AppTheme
+import com.cleanshot.app.ui.theme.ThemeViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(themeViewModel: ThemeViewModel = viewModel()) {
+
+    val themeSettings by themeViewModel.themeSettings.collectAsState()
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background
@@ -50,9 +53,9 @@ fun SettingsScreen() {
                 SettingSection(title = "Appearance") {
 
                     ThemeSelectorCard(
-                        selectedThemeMode = ThemeState.currentTheme,
+                        selectedThemeMode = themeSettings.theme,
                         onThemeSelected = {
-                            ThemeState.currentTheme = it
+                            themeViewModel.setTheme(it)
                         }
                     )
 
@@ -62,9 +65,9 @@ fun SettingsScreen() {
                         title = "AMOLED Mode",
                         description = "Pure black background in dark mode",
                         icon = Icons.Outlined.DarkMode,
-                        checked = ThemeState.useAmoledMode,
+                        checked = themeSettings.useAmoledMode,
                         onCheckedChange = {
-                            ThemeState.useAmoledMode = it
+                            themeViewModel.setAmoledMode(it)
                         }
                     )
 
@@ -74,9 +77,9 @@ fun SettingsScreen() {
                         title = "Dynamic Colors",
                         description = "Sync with system wallpaper colors",
                         icon = Icons.Outlined.Palette,
-                        checked = ThemeState.useDynamicColors,
+                        checked = themeSettings.useDynamicColors,
                         onCheckedChange = {
-                            ThemeState.useDynamicColors = it
+                            themeViewModel.setDynamicColors(it)
                         }
                     )
                 }
@@ -437,14 +440,14 @@ fun SettingActionItem(
 
 @Composable
 fun ThemeSelectorCard(
-    selectedThemeMode: ThemeMode,
-    onThemeSelected: (ThemeMode) -> Unit
+    selectedThemeMode: AppTheme,
+    onThemeSelected: (AppTheme) -> Unit
 ) {
 
     val themeOptions = listOf(
-        Triple("Light", ThemeMode.LIGHT, Icons.Outlined.LightMode),
-        Triple("Dark", ThemeMode.DARK, Icons.Outlined.DarkMode),
-        Triple("Device", ThemeMode.SYSTEM, Icons.Outlined.SettingsSuggest)
+        Triple("Light", AppTheme.LIGHT, Icons.Outlined.LightMode),
+        Triple("Dark", AppTheme.DARK, Icons.Outlined.DarkMode),
+        Triple("Device", AppTheme.SYSTEM, Icons.Outlined.SettingsSuggest)
     )
 
     Card(
