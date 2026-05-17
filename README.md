@@ -71,3 +71,26 @@ CleanShot helps users organize, manage, clean, and browse screenshots with a mod
 
 ```bash
 git clone https://github.com/hasith04/CleanShot.git
+```
+2. Open in Android Studio
+Sync Gradle
+Run on Android device or emulator
+📦 Current Status
+
+Version: v0.4 Alpha
+Currently under active development.
+
+##👨‍💻 Developer
+
+Jai Hasith
+
+GitHub: https://github.com/hasith04
+Instagram: https://www.instagram.com/jaiiiiiiiii________
+
+##❤️ Credits
+
+Designed and developed with Jetpack Compose and Material You inspiration.
+
+##📄 License
+
+This project is currently private/unlicensed.
