@@ -99,8 +99,6 @@ Currently under active development.
 
 - GitHub: https://github.com/hasith04
 - Instagram: https://www.instagram.com/jaiiiiiiiii________
-- Photography: https://www.instagram.com/pixelsofjaiii
-
 ---
 
 ## ❤️ Credits
