@@ -63,7 +63,9 @@ fun HomeScreen(
 
 @Composable
 fun QuickActionsRow() {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Row(modifier = Modifier
+        .fillMaxWidth()
+        .padding(horizontal = 2.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         QuickActionButton("Scan", Icons.Default.Search, Modifier.weight(1f))
         QuickActionButton("Organize", Icons.Default.AutoAwesome, Modifier.weight(1f))
         QuickActionButton("Cleanup", Icons.Default.DeleteSweep, Modifier.weight(1f))
