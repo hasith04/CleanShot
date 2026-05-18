@@ -309,6 +309,13 @@ fun MainContainer(themeViewModel: ThemeViewModel, storageViewModel: StorageViewM
                         screenshots = screenshotData.all,
                         onBack = {
                             currentScreen = previousScreen
+                        },
+                        onKeep = { },
+                        onDelete = { _ ->
+                            screenshotData = fetchScreenshotsData(
+                                context,
+                                storageSettings.monitoredFolders
+                            )
                         }
                     )
                 }
