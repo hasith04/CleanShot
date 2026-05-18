@@ -53,6 +53,7 @@ dependencies {
     // DataStore & ViewModel
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.documentfile)
     
     // Coil for image loading
     implementation(libs.coil.compose)

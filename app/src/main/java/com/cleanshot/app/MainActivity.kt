@@ -22,7 +22,6 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -33,8 +32,10 @@ import com.cleanshot.app.screens.FullscreenViewer
 import com.cleanshot.app.screens.HomeScreen
 import com.cleanshot.app.screens.LibraryScreen
 import com.cleanshot.app.screens.SettingsScreen
+import com.cleanshot.app.screens.CleanupScreen
 import com.cleanshot.app.ui.theme.CleanShotTheme
 import com.cleanshot.app.ui.theme.ThemeViewModel
+import com.cleanshot.app.utils.StorageViewModel
 import com.cleanshot.app.utils.fetchScreenshotsData
 import com.cleanshot.app.utils.getStorageInfo
 import com.cleanshot.app.utils.initiateDeletion
@@ -49,6 +50,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val themeViewModel: ThemeViewModel = viewModel()
+            val storageViewModel: StorageViewModel = viewModel()
             val themeSettings by themeViewModel.themeSettings.collectAsState()
 
             CleanShotTheme(
@@ -56,7 +58,7 @@ class MainActivity : ComponentActivity() {
                 useDynamicColors = themeSettings.useDynamicColors,
                 useAmoledMode = themeSettings.useAmoledMode
             ) {
-                MainContainer(themeViewModel)
+                MainContainer(themeViewModel, storageViewModel)
             }
         }
     }
@@ -64,9 +66,10 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainContainer(themeViewModel: ThemeViewModel) {
+fun MainContainer(themeViewModel: ThemeViewModel, storageViewModel: StorageViewModel) {
 
     val context = LocalContext.current
+    val storageSettings by storageViewModel.storageSettings.collectAsState()
 
     var currentScreen by remember {
         mutableStateOf(Screen.Home)
@@ -105,7 +108,7 @@ fun MainContainer(themeViewModel: ThemeViewModel) {
     /*
      * Back handling
      */
-    BackHandler(enabled = currentScreen == Screen.Viewer) {
+    BackHandler(enabled = currentScreen == Screen.Viewer || currentScreen == Screen.Cleanup) {
         currentScreen = previousScreen
     }
 
@@ -125,7 +128,7 @@ fun MainContainer(themeViewModel: ThemeViewModel) {
 
         if (result.resultCode == Activity.RESULT_OK) {
 
-            screenshotData = fetchScreenshotsData(context)
+            screenshotData = fetchScreenshotsData(context, storageSettings.monitoredFolders)
 
             selectedUris = emptySet()
 
@@ -150,23 +153,19 @@ fun MainContainer(themeViewModel: ThemeViewModel) {
     ) { granted ->
 
         if (granted) {
-            screenshotData = fetchScreenshotsData(context)
+            screenshotData = fetchScreenshotsData(context, storageSettings.monitoredFolders)
         }
     }
 
-    LaunchedEffect(Unit) {
-
+    LaunchedEffect(storageSettings.monitoredFolders) {
         if (
             ContextCompat.checkSelfPermission(
                 context,
                 permissionNeeded
             ) == PackageManager.PERMISSION_GRANTED
         ) {
-
-            screenshotData = fetchScreenshotsData(context)
-
+            screenshotData = fetchScreenshotsData(context, storageSettings.monitoredFolders)
         } else {
-
             permissionLauncher.launch(permissionNeeded)
         }
     }
@@ -177,8 +176,8 @@ fun MainContainer(themeViewModel: ThemeViewModel) {
     Scaffold(
 
         topBar = {
-
-            if (currentScreen != Screen.Viewer) {
+            // 1. REMOVE DUPLICATE TITLE: Hide when currentScreen == Screen.Cleanup
+            if (currentScreen != Screen.Viewer && currentScreen != Screen.Cleanup) {
 
                 if (selectedUris.isEmpty()) {
 
@@ -250,8 +249,8 @@ fun MainContainer(themeViewModel: ThemeViewModel) {
         },
 
         bottomBar = {
-
-            if (currentScreen != Screen.Viewer) {
+            // 9. Hide bottom navigation while on Cleanup screen
+            if (currentScreen != Screen.Viewer && currentScreen != Screen.Cleanup) {
 
                 BottomNavigationBar(
                     selectedScreen = currentScreen
@@ -264,17 +263,14 @@ fun MainContainer(themeViewModel: ThemeViewModel) {
             }
         },
 
-        containerColor =
-            if (currentScreen == Screen.Viewer)
-                Color.Black
-            else
-                MaterialTheme.colorScheme.background
+        // 2. FIX LIGHT/DARK THEME: Use background color scheme
+        containerColor = MaterialTheme.colorScheme.background
 
     ) { innerPadding ->
 
         Box(
             modifier = Modifier.padding(
-                if (currentScreen == Screen.Viewer)
+                if (currentScreen == Screen.Viewer || currentScreen == Screen.Cleanup)
                     PaddingValues()
                 else
                     innerPadding
@@ -291,19 +287,28 @@ fun MainContainer(themeViewModel: ThemeViewModel) {
                         recentScreenshots = screenshotData.recent,
 
                         onViewAllClick = {
-
                             previousScreen = currentScreen
                             currentScreen = Screen.Library
                         },
 
                         onScreenshotClick = { uri ->
-
-                            initialViewerIndex =
-                                screenshotData.all.indexOf(uri)
-                                    .coerceAtLeast(0)
-
+                            initialViewerIndex = screenshotData.all.indexOf(uri).coerceAtLeast(0)
                             previousScreen = currentScreen
                             currentScreen = Screen.Viewer
+                        },
+
+                        onCleanupClick = {
+                            previousScreen = currentScreen
+                            currentScreen = Screen.Cleanup
+                        }
+                    )
+                }
+
+                Screen.Cleanup -> {
+                    CleanupScreen(
+                        screenshots = screenshotData.all,
+                        onBack = {
+                            currentScreen = previousScreen
                         }
                     )
                 }
@@ -357,7 +362,7 @@ fun MainContainer(themeViewModel: ThemeViewModel) {
 
                 Screen.Settings -> {
 
-                    SettingsScreen(themeViewModel)
+                    SettingsScreen(themeViewModel, storageViewModel)
                 }
             }
         }

@@ -12,26 +12,82 @@ import com.cleanshot.app.models.ScreenshotResults
 import java.util.ArrayList
 import java.util.Date
 
-fun fetchScreenshotsData(context: Context): ScreenshotResults {
-    val screenshotsOnly = mutableListOf<Uri>()
-    val allImages = mutableListOf<Uri>()
-    val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.DATE_TAKEN)
+fun fetchScreenshotsData(context: Context, monitoredFolders: Set<String> = emptySet()): ScreenshotResults {
+    val finalUris = mutableListOf<Uri>()
+    
+    val projection = arrayOf(
+        MediaStore.Images.Media._ID,
+        MediaStore.Images.Media.DISPLAY_NAME,
+        MediaStore.Images.Media.RELATIVE_PATH
+    )
+    
     val sortOrder = "${MediaStore.Images.Media.DATE_TAKEN} DESC"
-    val query = context.contentResolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, null, null, sortOrder)
-    query?.use { cursor ->
-        val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-        val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
-        while (cursor.moveToNext()) {
-            val id = cursor.getLong(idColumn)
-            val name = cursor.getString(nameColumn) ?: ""
-            val contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
-            if (name.contains("Screenshot", ignoreCase = true)) screenshotsOnly.add(contentUri)
-            allImages.add(contentUri)
+    
+    // Build selection based on monitored folders
+    var selection: String? = null
+    var selectionArgs: Array<String>? = null
+    
+    if (monitoredFolders.isNotEmpty()) {
+        val paths = monitoredFolders.mapNotNull { uriString ->
+            extractRelativePath(uriString)
+        }
+        
+        if (paths.isNotEmpty()) {
+            selection = paths.joinToString(" OR ") { "${MediaStore.Images.Media.RELATIVE_PATH} LIKE ?" }
+            selectionArgs = paths.map { "$it%" }.toTypedArray()
         }
     }
-    val hasScreenshots = screenshotsOnly.isNotEmpty()
-    val finalAllList = if (hasScreenshots) screenshotsOnly else allImages
-    return ScreenshotResults(recent = finalAllList.take(10), all = finalAllList, totalCount = if (hasScreenshots) screenshotsOnly.size else 0)
+
+    // If no specific folders monitored, fallback to searching for "Screenshot" in name
+    if (selection == null) {
+        selection = "${MediaStore.Images.Media.DISPLAY_NAME} LIKE ?"
+        selectionArgs = arrayOf("%Screenshot%")
+    }
+
+    context.contentResolver.query(
+        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+        projection,
+        selection,
+        selectionArgs,
+        sortOrder
+    )?.use { cursor ->
+        val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+        while (cursor.moveToNext()) {
+            val id = cursor.getLong(idColumn)
+            val contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
+            finalUris.add(contentUri)
+        }
+    }
+    
+    return ScreenshotResults(
+        recent = finalUris.take(10),
+        all = finalUris,
+        totalCount = finalUris.size
+    )
+}
+
+/**
+ * Extracts relative path from a SAF Tree URI if possible.
+ * Example: content://com.android.externalstorage.documents/tree/primary%3APictures%2FScreenshots
+ * becomes Pictures/Screenshots/
+ */
+private fun extractRelativePath(uriString: String): String? {
+    return try {
+        val decodedUri = Uri.decode(uriString)
+        val treeId = decodedUri.substringAfter("/tree/", "")
+        if (treeId.startsWith("primary:")) {
+            val path = treeId.substringAfter("primary:")
+            if (path.isEmpty()) null else "$path/"
+        } else if (treeId.contains(":")) {
+            // Handle SD cards etc if needed, but primary is most common
+            val path = treeId.substringAfter(":")
+            if (path.isEmpty()) null else "$path/"
+        } else {
+            null
+        }
+    } catch (e: Exception) {
+        null
+    }
 }
 
 fun getScreenshotDetails(context: Context, uri: Uri): Map<String, String> {
@@ -47,12 +103,12 @@ fun getScreenshotDetails(context: Context, uri: Uri): Map<String, String> {
 
     context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
         if (cursor.moveToFirst()) {
-            val name = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME))
+            val name = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)) ?: "Unknown"
             val size = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE))
             val date = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED))
             val width = cursor.getInt(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.WIDTH))
             val height = cursor.getInt(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.HEIGHT))
-            val path = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA))
+            val path = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA)) ?: "Unknown"
 
             details["Name"] = name
             details["Size"] = Formatter.formatShortFileSize(context, size)
