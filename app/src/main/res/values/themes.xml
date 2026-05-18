@@ -1,5 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.CleanShot" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- Fallback; MainActivity sets the matching splash theme before installSplashScreen(). -->
+    <style name="Theme.CleanShot" parent="Theme.CleanShot.Splash.Light" />
+
+    <style name="Theme.CleanShot.Splash.Light" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/window_background_light</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="postSplashScreenTheme">@style/Theme.CleanShot.Light</item>
+    </style>
+
+    <style name="Theme.CleanShot.Splash.Dark" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/window_background_dark</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="postSplashScreenTheme">@style/Theme.CleanShot.Dark</item>
+    </style>
+
+    <style name="Theme.CleanShot.Splash.Amoled" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/window_background_amoled</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="postSplashScreenTheme">@style/Theme.CleanShot.Amoled</item>
+    </style>
+
+    <style name="Theme.CleanShot.Light" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_background_light</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+    </style>
+
+    <style name="Theme.CleanShot.Dark" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/window_background_dark</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+    </style>
+
+    <style name="Theme.CleanShot.Amoled" parent="Theme.CleanShot.Dark">
+        <item name="android:windowBackground">@color/window_background_amoled</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+    </style>
+
 </resources>

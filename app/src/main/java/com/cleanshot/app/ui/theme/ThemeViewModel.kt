@@ -2,20 +2,25 @@ package com.cleanshot.app.ui.theme
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-class ThemeViewModel(application: Application) : AndroidViewModel(application) {
+class ThemeViewModel(
+    application: Application,
+    initialSettings: ThemeSettings
+) : AndroidViewModel(application) {
     private val themePreferences = ThemePreferences(application)
 
     val themeSettings: StateFlow<ThemeSettings> = themePreferences.themeSettingsFlow
         .stateIn(
             scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = ThemeSettings(AppTheme.SYSTEM, true, false)
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = initialSettings
         )
 
     fun setTheme(theme: AppTheme) {
@@ -33,6 +38,23 @@ class ThemeViewModel(application: Application) : AndroidViewModel(application) {
     fun setAmoledMode(enabled: Boolean) {
         viewModelScope.launch {
             themePreferences.saveAmoledMode(enabled)
+        }
+    }
+
+    companion object {
+        fun factory(
+            application: Application,
+            initialSettings: ThemeSettings
+        ): ViewModelProvider.Factory {
+            return object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                    require(modelClass.isAssignableFrom(ThemeViewModel::class.java)) {
+                        "Unknown ViewModel class: ${modelClass.name}"
+                    }
+                    return ThemeViewModel(application, initialSettings) as T
+                }
+            }
         }
     }
 }
