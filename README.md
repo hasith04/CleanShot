@@ -7,6 +7,11 @@ Built with **Kotlin**, **Jetpack Compose**, and **Material 3**, the app focuses 
 ![Platform](https://img.shields.io/badge/Platform-Android-blue)
 ![Status](https://img.shields.io/badge/Status-Active-success)
 ![UI](https://img.shields.io/badge/UI-Material%20You-purple)
+
+<img width="3454" height="1406" alt="30D7FFC0-26D7-4985-BCFA-7A876E0DDDF1" src="https://github.com/user-attachments/assets/3b985c56-f4c1-421f-ac17-c882b5842993" />
+
+
+
 ---
 
 # ✨ Core Features
