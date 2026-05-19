@@ -59,7 +59,7 @@ Built with Material You design principles for a clean and responsive Android exp
 
 ## 🚧 Upcoming Features
 
-- Drag-and-drop screenshot 
+- Drag-and-drop screenshot categorizing
 - Screenshot markups and editing
 - Favorites & archive system
 - Screenshot taging
