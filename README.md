@@ -3,6 +3,7 @@
 CleanShot is a modern Android app designed to help users clean, organize, and manage screenshots through a fast and intuitive experience.
 
 Built with **Kotlin**, **Jetpack Compose**, and **Material 3**, the app focuses on turning screenshot management into a smooth, gesture-driven workflow instead of a traditional cluttered gallery experience.
+
 ![Platform](https://img.shields.io/badge/Platform-Android-blue)
 ![Status](https://img.shields.io/badge/Status-Active-success)
 ![UI](https://img.shields.io/badge/UI-Material%20You-purple)
