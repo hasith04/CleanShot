@@ -41,10 +41,11 @@ Built with Material You design principles for a clean and responsive Android exp
 ---
 ## 🖼️ App Screenshots
 
-<img width="1080" height="2400" alt="Screenshot_20260519_091152" src="https://github.com/user-attachments/assets/382c286f-7556-4ecc-aa45-d96d6b428f2b" />
-<img width="1080" height="2400" alt="Screenshot_20260519_091314" src="https://github.com/user-attachments/assets/1b7e2609-b329-4763-a265-c7d0a5e5d558" />
-<img width="1080" height="2400" alt="Screenshot_20260519_091227" src="https://github.com/user-attachments/assets/0f51b308-09ac-42e0-a705-35888f53b461" />
-
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/382c286f-7556-4ecc-aa45-d96d6b428f2b" width="250"/>
+  <img src="https://github.com/user-attachments/assets/1b7e2609-b329-4763-a265-c7d0a5e5d558" width="250"/>
+  <img src="https://github.com/user-attachments/assets/0f51b308-09ac-42e0-a705-35888f53b461" width="250"/>
+</p>
 
 
 # 🚧 Upcoming Features
