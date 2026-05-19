@@ -1,55 +1,66 @@
 # 📸 CleanShot
 
-Modern screenshot organizer built with **Kotlin + Jetpack Compose + Material 3**.
+CleanShot is a modern Android app designed to help users clean, organize, and manage screenshots through a fast and intuitive experience.
 
-CleanShot helps users organize, manage, clean, and browse screenshots with a modern Android experience inspired by Pixel UI and Material You.
+Built with **Kotlin**, **Jetpack Compose**, and **Material 3**, the app focuses on turning screenshot management into a smooth, gesture-driven workflow instead of a traditional cluttered gallery experience.
+
+![Platform](https://img.shields.io/badge/Platform-Android-blue)
+![Status](https://img.shields.io/badge/Status-Active-success)
+![UI](https://img.shields.io/badge/UI-Material%20You-purple)
+---
+
+# ✨ Core Features
+
+## 🧹 Cleanup Mode
+A swipe-based screenshot review system inspired by modern card interactions.
+
+- Swipe right to keep screenshots
+- Swipe left to queue screenshots for deletion
+- Undo deletion queue anytime
+- Fast batch cleanup workflow
+- Smooth gesture animations and transitions
 
 ---
 
-## ✨ Features
+## 📂 Screenshot Organization
+Browse and manage screenshots in a clean modern gallery experience.
 
-### 🎨 Modern UI
-- Material You dynamic theming
-- Light / Dark / Device theme modes
-- AMOLED dark mode
-- Adaptive colors based on wallpaper
-- Smooth modern Jetpack Compose UI
-
-### 🖼 Screenshot Management
-- Screenshot gallery viewer
+- Screenshot grid view
 - Fullscreen image viewer
-- Pinch-to-zoom support
-- Double tap zoom
-- Swipe navigation
 - Multi-selection support
-
-### ⚡ Productivity Features
-- Screenshot organization
-- Storage usage overview
-- Manual media refresh
-- Smart screenshot browsing
 - Fast image loading
-
-### ⚙️ Settings
-- Persistent theme preferences using DataStore
-- Viewer customization options
-- Experimental feature toggles
-- About section with developer links
+- Smooth navigation experience
 
 ---
 
-## 🚧 Planned Features
+## 🎨 Modern UI Experience
+Built with Material You design principles for a clean and responsive Android experience.
 
+- Dynamic wallpaper-based colors
+- Light / Dark / AMOLED themes
+- Smooth Compose animations
+- Pixel-inspired modern UI
+
+---
+
+## 📱 App Screenshots
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/15f131cc-baee-4f7c-92f3-3739a1b1128d" width="20%"/>
+  <img src="https://github.com/user-attachments/assets/f7736d6f-6148-4f85-ac6e-0eb6347dc867" width="20%"/>
+  <img src="https://github.com/user-attachments/assets/672cc24e-a511-4e4d-a7cf-02cd834e68ab" width="20%"/>
+  <img src="https://github.com/user-attachments/assets/83e19391-b2ce-424b-a0d5-357676967e26" width="20%"/>
+</p>
+
+## 🚧 Upcoming Features
+
+- Drag-and-drop screenshot organization
+- Smart screenshot grouping
 - Duplicate screenshot detection
-- Smart cleanup suggestions
-- Move to trash
-- Screenshot folder picker
-- Archive system
-- Favorites
-- Storage analytics
-- AI-powered screenshot categorization
 - Blur detection
-- Cloud sync
+- Trash & recovery system
+- Favorites & archive system
+- AI-assisted screenshot categorization
 
 ---
 
@@ -66,30 +77,22 @@ CleanShot helps users organize, manage, clean, and browse screenshots with a mod
 
 ## 🚀 Installation
 
-### 1. Clone the repository
-
 ```bash
 git clone https://github.com/hasith04/CleanShot.git
 ```
 
-### 2. Open in Android Studio
-
-Open the project folder in Android Studio.
-
-### 3. Sync Gradle
-
-Let Android Studio download dependencies and sync the project.
-
-### 4. Run the app
-
-Run on a physical Android device or emulator.
+Open the project in Android Studio and run on an Android device or emulator.
 
 ---
 
 ## 📦 Current Status
 
-**Version:** v0.4 Alpha  
-Currently under active development.
+### v0.4.1 Alpha
+
+Currently under active development with focus on:
+- smooth performance
+- modern UX
+- gesture-driven screenshot management
 
 ---
 
@@ -99,14 +102,9 @@ Currently under active development.
 
 - GitHub: https://github.com/hasith04
 - Instagram: https://www.instagram.com/jaiiiiiiiii________
----
-
-## ❤️ Credits
-
-Designed and developed using Jetpack Compose and Material You inspiration.
 
 ---
 
-## 📄 License
+# 📄 License
 
-This project is currently private / unlicensed.
+Currently private / unlicensed.
