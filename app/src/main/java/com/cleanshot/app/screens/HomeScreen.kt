@@ -4,12 +4,9 @@ import android.net.Uri
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -48,7 +45,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
@@ -62,6 +58,13 @@ import com.cleanshot.app.components.ComingSoonSheet
 import com.cleanshot.app.components.StorageCard
 import com.cleanshot.app.home.ScanButtonUiState
 import com.cleanshot.app.models.StorageInfo
+
+private val QuickActionButtonHeight = 88.dp
+private val QuickActionIconBoxSize = 24.dp
+private val QuickActionIconSize = 22.dp
+private val QuickActionCornerRadius = 20.dp
+private val QuickActionHorizontalPadding = 8.dp
+private val QuickActionVerticalPadding = 14.dp
 
 @Composable
 fun HomeScreen(
@@ -146,47 +149,81 @@ fun QuickActionsRow(
     onOrganizeClick: () -> Unit,
     onCleanupClick: () -> Unit
 ) {
-    Row(
+    val isScanning = scanButtonState is ScanButtonUiState.Scanning
+    val scanLabel = when (scanButtonState) {
+        ScanButtonUiState.Idle -> "Scan"
+        ScanButtonUiState.Scanning -> "Scanning..."
+        is ScanButtonUiState.Result -> "Scan"
+    }
+    val rowMetadata = when (scanButtonState) {
+        is ScanButtonUiState.Result -> scanButtonState.message
+        else -> lastScannedLabel
+    }
+
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        ScanQuickActionButton(
-            state = scanButtonState,
-            lastScannedLabel = lastScannedLabel,
-            enabled = isScanEnabled,
-            onClick = onScanClick,
-            modifier = Modifier.weight(1f)
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            ScanQuickActionButton(
+                label = scanLabel,
+                enabled = isScanEnabled,
+                isScanning = isScanning,
+                onClick = onScanClick,
+                modifier = Modifier.weight(1f)
+            )
 
-        QuickActionButton(
-            label = "Organize",
-            icon = Icons.Default.AutoAwesome,
-            enabled = true,
-            onClick = onOrganizeClick,
-            modifier = Modifier.weight(1f)
-        )
+            HomeQuickActionButton(
+                label = "Organize",
+                icon = Icons.Default.AutoAwesome,
+                iconScale = 0.9f,
+                onClick = onOrganizeClick,
+                modifier = Modifier.weight(1f)
+            )
 
-        QuickActionButton(
-            label = "Cleanup",
-            icon = Icons.Default.DeleteSweep,
-            enabled = true,
-            onClick = onCleanupClick,
-            modifier = Modifier.weight(1f)
-        )
+            HomeQuickActionButton(
+                label = "Cleanup",
+                icon = Icons.Default.DeleteSweep,
+                onClick = onCleanupClick,
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        if (rowMetadata != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            AnimatedContent(
+                targetState = rowMetadata,
+                transitionSpec = {
+                    fadeIn(tween(180)) togetherWith fadeOut(tween(140))
+                },
+                label = "scan_row_metadata"
+            ) { text ->
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
     }
 }
 
 @Composable
 private fun ScanQuickActionButton(
-    state: ScanButtonUiState,
-    lastScannedLabel: String?,
+    label: String,
     enabled: Boolean,
+    isScanning: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val haptic = LocalHapticFeedback.current
-    val isScanning = state is ScanButtonUiState.Scanning
-
     val pulseTransition = rememberInfiniteTransition(label = "scan_pulse")
     val animatedPulse by pulseTransition.animateFloat(
         initialValue = 1f,
@@ -198,129 +235,105 @@ private fun ScanQuickActionButton(
         label = "scan_pulse_scale"
     )
     val pulseScale = if (isScanning) animatedPulse else 1f
-    val pressScale by animateFloatAsState(
-        targetValue = 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessMedium),
-        label = "scan_press_scale"
-    )
 
-    val primaryLabel = when (state) {
-        ScanButtonUiState.Idle -> "Scan"
-        ScanButtonUiState.Scanning -> "Scanning..."
-        is ScanButtonUiState.Result -> state.message
-    }
-    val subtitle = when (state) {
-        ScanButtonUiState.Idle -> lastScannedLabel
-        ScanButtonUiState.Scanning -> lastScannedLabel
-        is ScanButtonUiState.Result -> null
-    }
+    HomeQuickActionButton(
+        label = label,
+        icon = Icons.Default.Search,
+        modifier = modifier.scale(pulseScale),
+        enabled = enabled && !isScanning,
+        isLoading = isScanning,
+        animateLabel = true,
+        onClick = onClick
+    )
+}
+
+@Composable
+private fun HomeQuickActionButton(
+    label: String,
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    isLoading: Boolean = false,
+    iconScale: Float = 1f,
+    animateLabel: Boolean = false,
+    onClick: () -> Unit = {}
+) {
+    val haptic = LocalHapticFeedback.current
+    val iconTint = MaterialTheme.colorScheme.onSecondaryContainer
 
     Surface(
         modifier = modifier
-            .scale(if (isScanning) pulseScale * pressScale else pressScale),
-        shape = RoundedCornerShape(20.dp),
+            .height(QuickActionButtonHeight)
+            .fillMaxWidth(),
+        shape = RoundedCornerShape(QuickActionCornerRadius),
         color = MaterialTheme.colorScheme.secondaryContainer,
         onClick = {
-            if (!enabled || isScanning) return@Surface
             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
             onClick()
         },
-        enabled = enabled && !isScanning
+        enabled = enabled && !isLoading
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 14.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .fillMaxSize()
+                .padding(
+                    horizontal = QuickActionHorizontalPadding,
+                    vertical = QuickActionVerticalPadding
+                ),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
-            Box(contentAlignment = Alignment.Center) {
-                if (isScanning) {
+            Box(
+                modifier = Modifier.size(QuickActionIconBoxSize),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isLoading) {
                     CircularProgressIndicator(
-                        modifier = Modifier.size(22.dp),
+                        modifier = Modifier.size(QuickActionIconSize),
                         strokeWidth = 2.dp,
                         color = MaterialTheme.colorScheme.primary
                     )
                 } else {
                     Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                        modifier = Modifier.graphicsLayer {
-                            rotationZ = 0f
-                        }
+                        imageVector = icon,
+                        contentDescription = label,
+                        tint = iconTint,
+                        modifier = Modifier
+                            .size(QuickActionIconSize)
+                            .scale(iconScale)
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            AnimatedContent(
-                targetState = primaryLabel,
-                transitionSpec = {
-                    fadeIn(tween(180)) togetherWith fadeOut(tween(140))
-                },
-                label = "scan_label"
-            ) { label ->
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelLarge,
-                    textAlign = TextAlign.Center,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            if (subtitle != null) {
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.65f),
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+            if (animateLabel) {
+                AnimatedContent(
+                    targetState = label,
+                    transitionSpec = {
+                        fadeIn(tween(180)) togetherWith fadeOut(tween(140))
+                    },
+                    label = "quick_action_label"
+                ) { animatedLabel ->
+                    QuickActionLabel(text = animatedLabel)
+                }
+            } else {
+                QuickActionLabel(text = label)
             }
         }
     }
 }
 
 @Composable
-fun QuickActionButton(
-    label: String,
-    icon: ImageVector,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    onClick: () -> Unit = {}
-) {
-    val haptic = LocalHapticFeedback.current
-
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        onClick = {
-            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-            onClick()
-        },
-        enabled = enabled
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = MaterialTheme.colorScheme.onSecondaryContainer
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelLarge
-            )
-        }
-    }
+private fun QuickActionLabel(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelLarge,
+        textAlign = TextAlign.Center,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.fillMaxWidth()
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)

@@ -112,7 +112,8 @@ class MainActivity : ComponentActivity() {
             CleanShotTheme(
                 theme = themeSettings.theme,
                 useDynamicColors = themeSettings.useDynamicColors,
-                useAmoledMode = themeSettings.useAmoledMode
+                useAmoledMode = themeSettings.useAmoledMode,
+                colorPreset = themeSettings.colorPreset
             ) {
                 MainContainer(themeViewModel, storageViewModel)
             }
@@ -294,8 +295,10 @@ fun MainContainer(themeViewModel: ThemeViewModel, storageViewModel: StorageViewM
     Scaffold(
 
         topBar = {
-            // 1. REMOVE DUPLICATE TITLE: Hide when currentScreen == Screen.Cleanup
-            if (currentScreen != Screen.Viewer && currentScreen != Screen.Cleanup) {
+            // Hide app bar on full-bleed or self-titled screens
+            if (currentScreen != Screen.Viewer &&
+                currentScreen != Screen.Cleanup
+            ) {
 
                 if (selectedUris.isEmpty()) {
 
@@ -307,6 +310,7 @@ fun MainContainer(themeViewModel: ThemeViewModel, storageViewModel: StorageViewM
                                 text = when (currentScreen) {
                                     Screen.Home -> "CleanShot"
                                     Screen.Library -> "Search"
+                                    Screen.Settings -> "Settings"
                                     else -> currentScreen.name
                                 }
                             )

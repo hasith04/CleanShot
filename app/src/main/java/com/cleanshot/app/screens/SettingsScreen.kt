@@ -9,6 +9,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -37,34 +38,39 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.cleanshot.app.ui.theme.AppTheme
+import android.text.format.Formatter
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.res.painterResource
+import com.cleanshot.app.R
+import com.cleanshot.app.data.AppInfo
+import com.cleanshot.app.data.ChangelogData
+import com.cleanshot.app.settings.PresetThemeSelector
+import com.cleanshot.app.settings.SettingsDesign
+import com.cleanshot.app.settings.ThemeModeSelector
 import com.cleanshot.app.ui.theme.ThemeViewModel
+import com.cleanshot.app.updates.UpdateCheckResult
+import com.cleanshot.app.updates.checkForAppUpdate
 import com.cleanshot.app.utils.StorageViewModel
+import com.cleanshot.app.utils.calculateCacheBytes
+import com.cleanshot.app.utils.clearAppCache
+import kotlinx.coroutines.launch
 
 private enum class SettingsView {
-    Main, Version, Credits, ManageFolders
+    Main, Version, Changelog, Credits, ManageFolders
 }
 
-/**
- * Reusable helper to open external links
- */
 private fun openLink(context: Context, url: String) {
+    if (url.isBlank()) return
     try {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-        context.startActivity(intent)
-    } catch (e: Exception) {
-        // Handle case where no browser is installed
-    }
-}
-
-/**
- * Helper to clear app cache safely
- */
-private fun clearAppCache(context: Context) {
-    try {
-        context.cacheDir.deleteRecursively()
-    } catch (e: Exception) {
-        e.printStackTrace()
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+            addCategory(Intent.CATEGORY_BROWSABLE)
+        }
+        context.startActivity(Intent.createChooser(intent, null))
+    } catch (_: Exception) {
+        Toast.makeText(context, "Could not open link", Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -78,9 +84,11 @@ fun SettingsScreen(
     val storageSettings by storageViewModel.storageSettings.collectAsState()
     var currentView by remember { mutableStateOf(SettingsView.Main) }
 
-    // Handle back press to return to main settings list
     BackHandler(enabled = currentView != SettingsView.Main) {
-        currentView = SettingsView.Main
+        currentView = when (currentView) {
+            SettingsView.Changelog -> SettingsView.Version
+            else -> SettingsView.Main
+        }
     }
 
     when (currentView) {
@@ -91,12 +99,19 @@ fun SettingsScreen(
                 storageSettings = storageSettings,
                 storageViewModel = storageViewModel,
                 onNavigateToVersion = { currentView = SettingsView.Version },
+                onNavigateToChangelog = { currentView = SettingsView.Changelog },
                 onNavigateToCredits = { currentView = SettingsView.Credits },
                 onNavigateToManageFolders = { currentView = SettingsView.ManageFolders }
             )
         }
         SettingsView.Version -> {
-            VersionScreen(onBack = { currentView = SettingsView.Main })
+            VersionScreen(
+                onBack = { currentView = SettingsView.Main },
+                onOpenChangelog = { currentView = SettingsView.Changelog }
+            )
+        }
+        SettingsView.Changelog -> {
+            ChangelogScreen(onBack = { currentView = SettingsView.Version })
         }
         SettingsView.Credits -> {
             CreditsScreen(onBack = { currentView = SettingsView.Main })
@@ -118,11 +133,29 @@ private fun MainSettingsList(
     storageSettings: com.cleanshot.app.utils.StorageSettings,
     storageViewModel: StorageViewModel,
     onNavigateToVersion: () -> Unit,
+    onNavigateToChangelog: () -> Unit,
     onNavigateToCredits: () -> Unit,
     onNavigateToManageFolders: () -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var showClearCacheDialog by remember { mutableStateOf(false) }
+    var cacheBytes by remember { mutableStateOf(0L) }
+    var isCacheLoading by remember { mutableStateOf(true) }
+    var isClearingCache by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        isCacheLoading = true
+        cacheBytes = calculateCacheBytes(context)
+        isCacheLoading = false
+    }
+
+    val cacheDescription = when {
+        isCacheLoading -> "Calculating cache size…"
+        isClearingCache -> "Clearing cache…"
+        cacheBytes <= 0L -> "Nothing to clear"
+        else -> "${Formatter.formatShortFileSize(context, cacheBytes)} available to clear"
+    }
 
     val folderPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
@@ -156,9 +189,14 @@ private fun MainSettingsList(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        clearAppCache(context)
                         showClearCacheDialog = false
-                        Toast.makeText(context, "Cache cleared", Toast.LENGTH_SHORT).show()
+                        scope.launch {
+                            isClearingCache = true
+                            clearAppCache(context)
+                            cacheBytes = calculateCacheBytes(context)
+                            isClearingCache = false
+                            Toast.makeText(context, "Cache cleared", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 ) {
                     Text("Clear", color = MaterialTheme.colorScheme.error)
@@ -172,36 +210,35 @@ private fun MainSettingsList(
         )
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text("Settings", fontWeight = FontWeight.Bold) },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
-            )
-        }
-    ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp),
-            contentPadding = PaddingValues(
-                top = innerPadding.calculateTopPadding(),
-                bottom = 32.dp
-            ),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
-        ) {
-            // APPEARANCE
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = SettingsDesign.HorizontalPadding),
+        contentPadding = PaddingValues(top = 8.dp, bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(SettingsDesign.SectionSpacing)
+    ) {
             item {
                 SettingSection(title = "Appearance") {
-                    ThemeSelectorCard(
-                        selectedThemeMode = themeSettings.theme,
+                    Column(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                    ThemeModeSelector(
+                        selectedTheme = themeSettings.theme,
                         onThemeSelected = { themeViewModel.setTheme(it) }
                     )
 
-                    SettingDivider()
+                    PresetThemeSelector(
+                        selectedPreset = themeSettings.colorPreset,
+                        dynamicColorsEnabled = themeSettings.useDynamicColors,
+                        onPresetSelected = { themeViewModel.setColorPreset(it) }
+                    )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                    )
 
                     SettingToggleItem(
                         title = "Dynamic Colors",
@@ -220,6 +257,7 @@ private fun MainSettingsList(
                         checked = themeSettings.useAmoledMode,
                         onCheckedChange = { themeViewModel.setAmoledMode(it) }
                     )
+                    }
                 }
             }
 
@@ -246,9 +284,9 @@ private fun MainSettingsList(
 
                     SettingActionItem(
                         title = "Clear Cache",
-                        description = "Free temporary storage space",
+                        description = cacheDescription,
                         icon = Icons.Outlined.DeleteSweep,
-                        onClick = { showClearCacheDialog = true }
+                        onClick = { if (!isClearingCache) showClearCacheDialog = true }
                     )
                 }
             }
@@ -267,9 +305,9 @@ private fun MainSettingsList(
 
                     SettingActionItem(
                         title = "GitHub",
-                        description = "Source code and issues",
-                        icon = Icons.Default.Code,
-                        onClick = { openLink(context, "https://github.com/hasith04") }
+                        description = "CleanShot source code and issues",
+                        icon = Icons.Outlined.Code,
+                        onClick = { openLink(context, AppInfo.GITHUB_REPO) }
                     )
 
                     SettingDivider()
@@ -282,7 +320,6 @@ private fun MainSettingsList(
                     )
                 }
             }
-        }
     }
 }
 
@@ -452,7 +489,10 @@ private fun ManageFoldersScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun VersionScreen(onBack: () -> Unit) {
+private fun VersionScreen(
+    onBack: () -> Unit,
+    onOpenChangelog: () -> Unit
+) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -469,106 +509,164 @@ private fun VersionScreen(onBack: () -> Unit) {
             )
         }
     ) { innerPadding ->
-        Column(
+        val context = LocalContext.current
+        val scope = rememberCoroutineScope()
+        var isCheckingUpdate by remember { mutableStateOf(false) }
+        var updateDialogMessage by remember { mutableStateOf<String?>(null) }
+        var updateReleaseUrl by remember { mutableStateOf<String?>(null) }
+
+        updateDialogMessage?.let { message ->
+            val releaseUrl = updateReleaseUrl
+            AlertDialog(
+                onDismissRequest = {
+                    updateDialogMessage = null
+                    updateReleaseUrl = null
+                },
+                title = { Text("Updates") },
+                text = { Text(message) },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            releaseUrl?.let { openLink(context, it) }
+                            updateDialogMessage = null
+                            updateReleaseUrl = null
+                        }
+                    ) {
+                        Text(if (releaseUrl != null) "View release" else "OK")
+                    }
+                },
+                dismissButton = if (releaseUrl != null) {
+                    {
+                        TextButton(onClick = {
+                            updateDialogMessage = null
+                            updateReleaseUrl = null
+                        }) {
+                            Text("Close")
+                        }
+                    }
+                } else {
+                    null
+                }
+            )
+        }
+
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(horizontal = SettingsDesign.HorizontalPadding),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            contentPadding = PaddingValues(top = 4.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(32.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                ),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-            ) {
+            item {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 40.dp, horizontal = 24.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Surface(
-                        modifier = Modifier.size(90.dp),
-                        shape = RoundedCornerShape(24.dp),
+                        modifier = Modifier.size(56.dp),
+                        shape = RoundedCornerShape(14.dp),
                         color = MaterialTheme.colorScheme.primaryContainer,
-                        shadowElevation = 2.dp
+                        border = BorderStroke(
+                            0.5.dp,
+                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f)
+                        )
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Camera,
+                        Image(
+                            painter = painterResource(R.mipmap.ic_launcher_foreground),
                             contentDescription = null,
-                            modifier = Modifier.padding(22.dp),
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(8.dp)
                         )
                     }
-
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    Text(
-                        text = "CleanShot",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Black,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-
-                    Text(
-                        text = "v0.4 Alpha",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold
-                    )
 
                     Spacer(modifier = Modifier.height(12.dp))
 
                     Text(
-                        text = "Modern screenshot organizer built with Kotlin and Material You.",
-                        textAlign = TextAlign.Center,
+                        text = AppInfo.NAME,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+
+                    Text(
+                        text = "v${AppInfo.VERSION_NAME}",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        lineHeight = 20.sp
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Text(
+                        text = AppInfo.TAGLINE,
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                        lineHeight = 17.sp,
+                        modifier = Modifier.padding(horizontal = 12.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
-
+            item {
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 VersionActionButton(
-                    text = "Check for Updates",
+                    text = if (isCheckingUpdate) "Checking…" else "Check for Updates",
                     icon = Icons.Outlined.Update,
-                    onClick = {}
+                    onClick = {
+                        if (isCheckingUpdate) return@VersionActionButton
+                        scope.launch {
+                            isCheckingUpdate = true
+                            when (val result = checkForAppUpdate(AppInfo.VERSION_NAME)) {
+                                is UpdateCheckResult.UpToDate ->
+                                    updateDialogMessage = "You're up to date."
+                                is UpdateCheckResult.UpdateAvailable -> {
+                                    updateDialogMessage =
+                                        "Update available: v${result.latestVersion}\n\n${result.releaseNotes}"
+                                    updateReleaseUrl = result.releaseUrl
+                                }
+                                is UpdateCheckResult.Error ->
+                                    updateDialogMessage = result.message
+                            }
+                            isCheckingUpdate = false
+                        }
+                    }
                 )
                 VersionActionButton(
                     text = "View Changelog",
                     icon = Icons.Outlined.History,
-                    onClick = {}
+                    onClick = onOpenChangelog
                 )
                 VersionActionButton(
                     text = "Report Bugs",
                     icon = Icons.Outlined.BugReport,
-                    onClick = {}
+                    onClick = { openLink(context, AppInfo.GITHUB_ISSUES) }
                 )
             }
+            }
 
-            Spacer(modifier = Modifier.weight(1f))
-
-            Text(
-                text = "Made with ❤️ by Jai Hasith",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                modifier = Modifier.padding(bottom = 24.dp)
-            )
+            item {
+                Text(
+                    text = "Made with ❤️ by Jai Hasith",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                )
+            }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun VersionActionButton(
     text: String,
@@ -578,43 +676,40 @@ private fun VersionActionButton(
     Surface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
+        shape = SettingsDesign.CardShape,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+        border = BorderStroke(
+            0.5.dp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)
+        ),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            }
-            Spacer(modifier = Modifier.width(16.dp))
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(SettingsDesign.ItemIconSize),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.width(12.dp))
             Text(
                 text = text,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f)
             )
-            Spacer(modifier = Modifier.weight(1f))
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null,
                 modifier = Modifier.size(18.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
             )
         }
     }
@@ -644,31 +739,34 @@ private fun CreditsScreen(onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 20.dp),
+                .padding(horizontal = SettingsDesign.HorizontalPadding),
             verticalArrangement = Arrangement.spacedBy(24.dp),
             contentPadding = PaddingValues(top = 16.dp, bottom = 40.dp)
         ) {
             item {
                 CreditCardSection(title = "Developer", icon = Icons.Outlined.Person) {
                     ListItem(
+                        modifier = Modifier.clickable {
+                            openLink(context, AppInfo.DEVELOPER_WEBSITE)
+                        },
                         headlineContent = {
                             Text("Jai Hasith", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                         },
-                        supportingContent = { Text("Lead Developer") },
+                        supportingContent = { Text("Lead Developer · Tap to visit website") },
                         leadingContent = {
-                            Box(
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primaryContainer),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    Icons.Outlined.Person,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                            }
+                            Icon(
+                                Icons.Outlined.Person,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(SettingsDesign.ItemIconSize)
+                            )
+                        },
+                        trailingContent = {
+                            Icon(
+                                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
                         },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent)
                     )
@@ -679,9 +777,9 @@ private fun CreditsScreen(onBack: () -> Unit) {
                 CreditCardSection(title = "Social Links", icon = Icons.Outlined.Public) {
                     SocialLinkCard(
                         title = "GitHub",
-                        subtitle = "Explore my projects & source code",
-                        icon = Icons.Default.Code,
-                        onClick = { openLink(context, "https://github.com/hasith04") }
+                        subtitle = "CleanShot source code and issues",
+                        icon = Icons.Outlined.Code,
+                        onClick = { openLink(context, AppInfo.GITHUB_REPO) }
                     )
                     HorizontalDivider(
                         modifier = Modifier.padding(horizontal = 16.dp),
@@ -719,29 +817,32 @@ private fun CreditCardSection(
     Column {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(start = 12.dp, bottom = 12.dp)
+            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(18.dp)
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp)
             )
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(6.dp))
             Text(
                 text = title,
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.SemiBold
             )
         }
-        Card(
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(28.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer
+            shape = SettingsDesign.CardShape,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            border = BorderStroke(
+                0.5.dp,
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)
             ),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp
         ) {
             Column(content = content)
         }
@@ -756,23 +857,27 @@ private fun SocialLinkCard(
     onClick: () -> Unit
 ) {
     ListItem(
-        headlineContent = { Text(title, fontWeight = FontWeight.Bold) },
-        supportingContent = { Text(subtitle, style = MaterialTheme.typography.bodySmall) },
+        headlineContent = {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium
+            )
+        },
+        supportingContent = {
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f)
+            )
+        },
         leadingContent = {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(SettingsDesign.ItemIconSize),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         },
         trailingContent = {
             Icon(
@@ -795,24 +900,115 @@ fun SettingSection(
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(start = 8.dp, top = 12.dp, bottom = 12.dp)
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
         )
 
-        Card(
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(28.dp),
+            shape = SettingsDesign.CardShape,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
             border = BorderStroke(
-                1.dp,
-                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                0.5.dp,
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)
             ),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer
-            )
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp
         ) {
-            Column(modifier = Modifier.padding(4.dp), content = content)
+            Column(
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                content = content
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChangelogScreen(onBack: () -> Unit) {
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = {
+            TopAppBar(
+                title = { Text("Changelog", fontWeight = FontWeight.SemiBold) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
+            )
+        }
+    ) { innerPadding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(horizontal = SettingsDesign.HorizontalPadding),
+            contentPadding = PaddingValues(top = 12.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(ChangelogData.entries) { entry ->
+                var expanded by remember(entry.version) { mutableStateOf(true) }
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { expanded = !expanded },
+                    shape = SettingsDesign.InnerCardShape,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    border = BorderStroke(
+                        0.5.dp,
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)
+                    ),
+                    tonalElevation = 0.dp,
+                    shadowElevation = 0.dp
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = entry.version,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Icon(
+                                imageVector = if (expanded) {
+                                    Icons.Default.ExpandLess
+                                } else {
+                                    Icons.Default.ExpandMore
+                                },
+                                contentDescription = null
+                            )
+                        }
+                        if (expanded) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            entry.notes.forEach { note ->
+                                Row(
+                                    modifier = Modifier.padding(vertical = 3.dp),
+                                    verticalAlignment = Alignment.Top
+                                ) {
+                                    Text(
+                                        "• ",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                    )
+                                    Text(
+                                        text = note,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -820,9 +1016,9 @@ fun SettingSection(
 @Composable
 fun SettingDivider() {
     HorizontalDivider(
-        modifier = Modifier.padding(horizontal = 56.dp),
+        modifier = Modifier.padding(start = 52.dp, end = 12.dp),
         thickness = 0.5.dp,
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
     )
 }
 
@@ -836,17 +1032,31 @@ fun SettingToggleItem(
 ) {
     ListItem(
         modifier = Modifier
-            .clip(RoundedCornerShape(24.dp))
+            .clip(RoundedCornerShape(SettingsDesign.InnerCardRadius))
             .clickable { onCheckedChange(!checked) }
             .animateContentSize(),
         headlineContent = {
-            Text(text = title, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
         },
         supportingContent = {
-            Text(text = description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f)
+            )
         },
         leadingContent = {
-            Icon(imageVector = icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(24.dp))
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(SettingsDesign.ItemIconSize)
+            )
         },
         trailingContent = {
             Switch(checked = checked, onCheckedChange = onCheckedChange)
@@ -864,103 +1074,39 @@ fun SettingActionItem(
 ) {
     ListItem(
         modifier = Modifier
-            .clip(RoundedCornerShape(24.dp))
+            .clip(RoundedCornerShape(SettingsDesign.InnerCardRadius))
             .clickable(onClick = onClick),
         headlineContent = {
-            Text(title, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
         },
         supportingContent = {
-            Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f)
+            )
         },
         leadingContent = {
-            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(24.dp))
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(SettingsDesign.ItemIconSize)
+            )
         },
         trailingContent = {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp)
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                modifier = Modifier.size(18.dp)
             )
         },
         colors = ListItemDefaults.colors(containerColor = Color.Transparent)
     )
-}
-
-@Composable
-fun ThemeSelectorCard(
-    selectedThemeMode: AppTheme,
-    onThemeSelected: (AppTheme) -> Unit
-) {
-    val themeOptions = listOf(
-        Triple("Light", AppTheme.LIGHT, Icons.Outlined.LightMode),
-        Triple("Dark", AppTheme.DARK, Icons.Outlined.DarkMode),
-        Triple("Device", AppTheme.SYSTEM, Icons.Outlined.SettingsSuggest)
-    )
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-        ),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-    ) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            Text(
-                text = "Theme",
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp
-            )
-            Text(
-                text = "Light, dark, or system default",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                themeOptions.forEach { (label, mode, icon) ->
-                    val selected = selectedThemeMode == mode
-                    Card(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(80.dp)
-                            .clip(RoundedCornerShape(18.dp))
-                            .clickable { onThemeSelected(mode) },
-                        shape = RoundedCornerShape(18.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest
-                        ),
-                        border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary else Color.Transparent)
-                    ) {
-                        Column(
-                            modifier = Modifier.fillMaxSize(),
-                            verticalArrangement = Arrangement.Center,
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Icon(
-                                imageVector = icon,
-                                contentDescription = null,
-                                tint = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = label,
-                                color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
 }

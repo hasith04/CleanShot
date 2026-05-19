@@ -35,6 +35,13 @@ class ThemeViewModel(
         }
     }
 
+    fun setColorPreset(preset: ColorPreset) {
+        viewModelScope.launch {
+            themePreferences.saveColorPreset(preset)
+            themePreferences.saveDynamicColors(false)
+        }
+    }
+
     fun setAmoledMode(enabled: Boolean) {
         viewModelScope.launch {
             themePreferences.saveAmoledMode(enabled)

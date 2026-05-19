@@ -19,11 +19,13 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 private val THEME_KEY = stringPreferencesKey("selected_theme")
 private val DYNAMIC_COLORS_KEY = booleanPreferencesKey("dynamic_colors")
 private val AMOLED_MODE_KEY = booleanPreferencesKey("amoled_mode")
+private val COLOR_PRESET_KEY = stringPreferencesKey("color_preset")
 
 data class ThemeSettings(
     val theme: AppTheme,
     val useDynamicColors: Boolean,
-    val useAmoledMode: Boolean
+    val useAmoledMode: Boolean,
+    val colorPreset: ColorPreset
 )
 
 class ThemePreferences(private val context: Context) {
@@ -68,6 +70,12 @@ class ThemePreferences(private val context: Context) {
             prefs[AMOLED_MODE_KEY] = enabled
         }
     }
+
+    suspend fun saveColorPreset(preset: ColorPreset) {
+        context.dataStore.edit { prefs ->
+            prefs[COLOR_PRESET_KEY] = preset.name
+        }
+    }
 }
 
 private fun Preferences.toThemeSettings(): ThemeSettings {
@@ -77,7 +85,8 @@ private fun Preferences.toThemeSettings(): ThemeSettings {
         } catch (_: Exception) {
             AppTheme.SYSTEM
         },
-        useDynamicColors = this[DYNAMIC_COLORS_KEY] ?: true,
-        useAmoledMode = this[AMOLED_MODE_KEY] ?: false
+        useDynamicColors = this[DYNAMIC_COLORS_KEY] ?: false,
+        useAmoledMode = this[AMOLED_MODE_KEY] ?: false,
+        colorPreset = ColorPreset.fromStored(this[COLOR_PRESET_KEY])
     )
 }

@@ -16,8 +16,9 @@ object ThemeRuntime {
     @Volatile
     var settings: ThemeSettings = ThemeSettings(
         theme = AppTheme.SYSTEM,
-        useDynamicColors = true,
-        useAmoledMode = false
+        useDynamicColors = false,
+        useAmoledMode = false,
+        colorPreset = ColorPreset.AmoledPurple
     )
 }
 
@@ -27,7 +28,8 @@ fun Context.themeBackgroundColor(settings: ThemeSettings): Color {
         context = this,
         darkTheme = dark,
         useDynamicColors = settings.useDynamicColors,
-        useAmoledMode = settings.useAmoledMode
+        useAmoledMode = settings.useAmoledMode,
+        colorPreset = settings.colorPreset
     ).background
 }
 
