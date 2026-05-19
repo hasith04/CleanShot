@@ -7,6 +7,11 @@ Built with **Kotlin**, **Jetpack Compose**, and **Material 3**, the app focuses 
 ![Platform](https://img.shields.io/badge/Platform-Android-blue)
 ![Status](https://img.shields.io/badge/Status-Active-success)
 ![UI](https://img.shields.io/badge/UI-Material%20You-purple)
+
+<img width="3454" height="1406" alt="30D7FFC0-26D7-4985-BCFA-7A876E0DDDF1" src="https://github.com/user-attachments/assets/3b985c56-f4c1-421f-ac17-c882b5842993" />
+
+
+
 ---
 
 # ✨ Core Features
@@ -17,12 +22,12 @@ A swipe-based screenshot review system inspired by modern card interactions.
 - Swipe right to keep screenshots
 - Swipe left to queue screenshots for deletion
 - Undo deletion queue anytime
-- Fast batch cleanup workflow
+- Fast queue cleanup
 - Smooth gesture animations and transitions
 
 ---
 
-## 📂 Screenshot Organization
+## 📂 Screenshot Library View
 Browse and manage screenshots in a clean modern gallery experience.
 
 - Screenshot grid view
@@ -54,13 +59,10 @@ Built with Material You design principles for a clean and responsive Android exp
 
 ## 🚧 Upcoming Features
 
-- Drag-and-drop screenshot organization
-- Smart screenshot grouping
-- Duplicate screenshot detection
-- Blur detection
-- Trash & recovery system
+- Drag-and-drop screenshot categorizing
+- Screenshot markups and editing
 - Favorites & archive system
-- AI-assisted screenshot categorization
+- Screenshot taging
 
 ---
 
@@ -82,17 +84,6 @@ git clone https://github.com/hasith04/CleanShot.git
 ```
 
 Open the project in Android Studio and run on an Android device or emulator.
-
----
-
-## 📦 Current Status
-
-### v0.4.1 Alpha
-
-Currently under active development with focus on:
-- smooth performance
-- modern UX
-- gesture-driven screenshot management
 
 ---
 
