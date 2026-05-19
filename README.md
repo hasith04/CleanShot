@@ -51,8 +51,8 @@ Built with Material You design principles for a clean and responsive Android exp
   <img src="https://github.com/user-attachments/assets/672cc24e-a511-4e4d-a7cf-02cd834e68ab" width="20%"/>
   <img src="https://github.com/user-attachments/assets/83e19391-b2ce-424b-a0d5-357676967e26" width="20%"/>
 </p>
-<br><br>
-# 🚧 Upcoming Features
+
+## 🚧 Upcoming Features
 
 - Drag-and-drop screenshot organization
 - Smart screenshot grouping
@@ -64,7 +64,7 @@ Built with Material You design principles for a clean and responsive Android exp
 
 ---
 
-# 🛠 Built With
+## 🛠 Built With
 
 - Kotlin
 - Jetpack Compose
@@ -75,7 +75,7 @@ Built with Material You design principles for a clean and responsive Android exp
 
 ---
 
-# 🚀 Installation
+## 🚀 Installation
 
 ```bash
 git clone https://github.com/hasith04/CleanShot.git
@@ -85,7 +85,7 @@ Open the project in Android Studio and run on an Android device or emulator.
 
 ---
 
-# 📦 Current Status
+## 📦 Current Status
 
 ### v0.4.1 Alpha
 
@@ -96,7 +96,7 @@ Currently under active development with focus on:
 
 ---
 
-# 👨‍💻 Developer
+## 👨‍💻 Developer
 
 ### Jai Hasith
 
