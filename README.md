@@ -44,7 +44,7 @@ Built with Material You design principles for a clean and responsive Android exp
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/15f131cc-baee-4f7c-92f3-3739a1b1128d" width="22%"/>
-  <img src="https://github.com/user-attachments/assets/0e7d0d90-87f4-4175-a33e-ccd3ee953976" width="22%"/>
+  <img src="https://github.com/user-attachments/assets/f7736d6f-6148-4f85-ac6e-0eb6347dc867" width="22%"/>
   <img src="https://github.com/user-attachments/assets/672cc24e-a511-4e4d-a7cf-02cd834e68ab" width="22%"/>
   <img src="https://github.com/user-attachments/assets/83e19391-b2ce-424b-a0d5-357676967e26" width="22%"/>
 </p>
