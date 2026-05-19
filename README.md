@@ -22,12 +22,12 @@ A swipe-based screenshot review system inspired by modern card interactions.
 - Swipe right to keep screenshots
 - Swipe left to queue screenshots for deletion
 - Undo deletion queue anytime
-- Fast batch cleanup workflow
+- Fast queue cleanup
 - Smooth gesture animations and transitions
 
 ---
 
-## 📂 Screenshot Organization
+## 📂 Screenshot Library View
 Browse and manage screenshots in a clean modern gallery experience.
 
 - Screenshot grid view
@@ -59,13 +59,10 @@ Built with Material You design principles for a clean and responsive Android exp
 
 ## 🚧 Upcoming Features
 
-- Drag-and-drop screenshot organization
-- Smart screenshot grouping
-- Duplicate screenshot detection
-- Blur detection
-- Trash & recovery system
+- Drag-and-drop screenshot 
+- Screenshot markups and editing
 - Favorites & archive system
-- AI-assisted screenshot categorization
+- Screenshot taging
 
 ---
 
