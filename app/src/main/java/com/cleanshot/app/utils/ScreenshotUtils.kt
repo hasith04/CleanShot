@@ -8,17 +8,22 @@ import android.os.Build
 import android.provider.MediaStore
 import android.text.format.Formatter
 import androidx.activity.result.IntentSenderRequest
+import com.cleanshot.app.models.ScreenshotItem
 import com.cleanshot.app.models.ScreenshotResults
 import java.util.ArrayList
 import java.util.Date
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 fun fetchScreenshotsData(context: Context, monitoredFolders: Set<String> = emptySet()): ScreenshotResults {
-    val finalUris = mutableListOf<Uri>()
+    val items = mutableListOf<ScreenshotItem>()
     
     val projection = arrayOf(
         MediaStore.Images.Media._ID,
         MediaStore.Images.Media.DISPLAY_NAME,
-        MediaStore.Images.Media.RELATIVE_PATH
+        MediaStore.Images.Media.RELATIVE_PATH,
+        MediaStore.Images.Media.DATE_TAKEN,
+        MediaStore.Images.Media.SIZE
     )
     
     val sortOrder = "${MediaStore.Images.Media.DATE_TAKEN} DESC"
@@ -52,17 +57,44 @@ fun fetchScreenshotsData(context: Context, monitoredFolders: Set<String> = empty
         sortOrder
     )?.use { cursor ->
         val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+        val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
+        val pathColumn = cursor.getColumnIndex(MediaStore.Images.Media.RELATIVE_PATH)
+        val dateColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_TAKEN)
+        val sizeColumn = cursor.getColumnIndex(MediaStore.Images.Media.SIZE)
         while (cursor.moveToNext()) {
             val id = cursor.getLong(idColumn)
             val contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
-            finalUris.add(contentUri)
+            val name = cursor.getString(nameColumn).orEmpty()
+            val relativePath = if (pathColumn >= 0) {
+                cursor.getString(pathColumn).orEmpty()
+            } else {
+                ""
+            }
+            val dateTaken = cursor.getLong(dateColumn)
+            val sizeBytes = if (sizeColumn >= 0) {
+                cursor.getLong(sizeColumn).coerceAtLeast(0L)
+            } else {
+                0L
+            }
+            items.add(
+                ScreenshotItem(
+                    uri = contentUri,
+                    dateTakenMillis = dateTaken,
+                    displayName = name,
+                    sizeBytes = sizeBytes,
+                    relativePath = relativePath,
+                    sourceApp = ScreenshotSourceDetector.detect(relativePath, name)
+                )
+            )
         }
     }
-    
+
+    val uris = items.map { it.uri }
     return ScreenshotResults(
-        recent = finalUris.take(10),
-        all = finalUris,
-        totalCount = finalUris.size
+        recent = uris.take(10),
+        all = uris,
+        items = items,
+        totalCount = items.size
     )
 }
 
@@ -89,6 +121,26 @@ private fun extractRelativePath(uriString: String): String? {
         null
     }
 }
+
+/** Sums [MediaStore.Images.Media.SIZE] for the given content URIs (IO-bound). */
+suspend fun estimateUrisTotalBytes(context: Context, uris: List<Uri>): Long =
+    withContext(Dispatchers.IO) {
+        if (uris.isEmpty()) return@withContext 0L
+        val projection = arrayOf(MediaStore.Images.Media.SIZE)
+        var total = 0L
+        val resolver = context.contentResolver
+        for (uri in uris) {
+            resolver.query(uri, projection, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val sizeIndex = cursor.getColumnIndex(MediaStore.Images.Media.SIZE)
+                    if (sizeIndex >= 0) {
+                        total += cursor.getLong(sizeIndex).coerceAtLeast(0L)
+                    }
+                }
+            }
+        }
+        total
+    }
 
 fun getScreenshotDetails(context: Context, uri: Uri): Map<String, String> {
     val details = mutableMapOf<String, String>()

@@ -21,7 +21,7 @@ fun BottomNavigationBar(selectedScreen: Screen, onScreenSelected: (Screen) -> Un
             selected = selectedScreen == Screen.Library,
             onClick = { onScreenSelected(Screen.Library) },
             icon = { Icon(Icons.Default.Folder, contentDescription = null) },
-            label = { Text("Library") }
+            label = { Text("Search") }
         )
         NavigationBarItem(
             selected = selectedScreen == Screen.Settings,

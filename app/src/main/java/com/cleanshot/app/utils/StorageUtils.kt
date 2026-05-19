@@ -6,27 +6,45 @@ import android.os.Build
 import android.os.Environment
 import android.os.StatFs
 import android.os.storage.StorageManager
-import android.text.format.Formatter
+import com.cleanshot.app.models.ScreenshotItem
 import com.cleanshot.app.models.StorageInfo
 
-fun getStorageInfo(context: Context): StorageInfo {
+data class DeviceStorageCapacity(
+    val totalBytes: Long,
+    val freeBytes: Long
+)
+
+fun getDeviceStorageCapacity(context: Context): DeviceStorageCapacity {
     val stat = StatFs(Environment.getDataDirectory().path)
-    var totalBytes: Long = 0
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+    val totalBytes = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         try {
-            val statsManager = context.getSystemService(Context.STORAGE_STATS_SERVICE) as StorageStatsManager
-            totalBytes = statsManager.getTotalBytes(StorageManager.UUID_DEFAULT)
-        } catch (e: Exception) {
-            totalBytes = stat.totalBytes
+            val statsManager =
+                context.getSystemService(Context.STORAGE_STATS_SERVICE) as StorageStatsManager
+            statsManager.getTotalBytes(StorageManager.UUID_DEFAULT)
+        } catch (_: Exception) {
+            stat.totalBytes
         }
     } else {
-        totalBytes = stat.totalBytes
+        stat.totalBytes
     }
-    val freeBytes = stat.availableBytes
-    val usedBytes = totalBytes - freeBytes
-    val totalSpaceStr = Formatter.formatShortFileSize(context, totalBytes)
-    val usedSpaceStr = Formatter.formatShortFileSize(context, usedBytes)
-    val freeSpaceStr = Formatter.formatShortFileSize(context, freeBytes)
-    val progress = if (totalBytes > 0) usedBytes.toFloat() / totalBytes.toFloat() else 0f
-    return StorageInfo(totalSpaceStr, usedSpaceStr, freeSpaceStr, progress)
+    return DeviceStorageCapacity(
+        totalBytes = totalBytes,
+        freeBytes = stat.availableBytes.coerceAtLeast(0L)
+    )
 }
+
+fun getScreenshotStorageInfo(
+    items: List<ScreenshotItem>,
+    deviceCapacity: DeviceStorageCapacity
+): StorageInfo {
+    val screenshotBytes = items.sumOf { it.sizeBytes.coerceAtLeast(0L) }
+    return StorageInfo(
+        screenshotBytesUsed = screenshotBytes,
+        screenshotCount = items.size,
+        deviceTotalBytes = deviceCapacity.totalBytes,
+        deviceFreeBytes = deviceCapacity.freeBytes
+    )
+}
+
+fun getScreenshotStorageInfo(context: Context, items: List<ScreenshotItem>): StorageInfo =
+    getScreenshotStorageInfo(items, getDeviceStorageCapacity(context))

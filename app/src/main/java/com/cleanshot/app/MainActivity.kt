@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -45,8 +46,15 @@ import com.cleanshot.app.ui.theme.applyThemeWindow
 import com.cleanshot.app.ui.theme.installThemeWindowPreDrawSync
 import com.cleanshot.app.ui.theme.themeBackgroundColor
 import com.cleanshot.app.utils.StorageViewModel
+import com.cleanshot.app.home.ScanButtonUiState
+import com.cleanshot.app.home.formatLastScannedLabel
+import com.cleanshot.app.home.resultMessageForScan
 import com.cleanshot.app.utils.fetchScreenshotsData
-import com.cleanshot.app.utils.getStorageInfo
+import com.cleanshot.app.utils.getScreenshotStorageInfo
+import com.cleanshot.app.utils.refreshScreenshotLibrary
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import com.cleanshot.app.utils.initiateDeletion
 import com.cleanshot.app.utils.shareScreenshots
 
@@ -117,6 +125,7 @@ class MainActivity : ComponentActivity() {
 fun MainContainer(themeViewModel: ThemeViewModel, storageViewModel: StorageViewModel) {
 
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val storageSettings by storageViewModel.storageSettings.collectAsState()
 
     var currentScreen by remember {
@@ -132,10 +141,17 @@ fun MainContainer(themeViewModel: ThemeViewModel, storageViewModel: StorageViewM
             ScreenshotResults(
                 recent = emptyList(),
                 all = emptyList(),
+                items = emptyList(),
                 totalCount = 0
             )
         )
     }
+
+    var isLibraryLoading by remember { mutableStateOf(true) }
+    var libraryOptionsOpen by remember { mutableStateOf(false) }
+    var scanButtonState by remember { mutableStateOf<ScanButtonUiState>(ScanButtonUiState.Idle) }
+    var lastScanEpochMs by remember { mutableLongStateOf(0L) }
+    var showOrganizeComingSoon by remember { mutableStateOf(false) }
 
     var selectedUris by remember {
         mutableStateOf(setOf<Uri>())
@@ -149,8 +165,33 @@ fun MainContainer(themeViewModel: ThemeViewModel, storageViewModel: StorageViewM
         mutableIntStateOf(0)
     }
 
-    val storageInfo = remember(screenshotData) {
-        getStorageInfo(context)
+    val storageInfo = remember(screenshotData.items, screenshotData.totalCount) {
+        getScreenshotStorageInfo(context, screenshotData.items)
+    }
+
+    val lastScannedLabel = remember(lastScanEpochMs) {
+        formatLastScannedLabel(lastScanEpochMs)
+    }
+
+    val permissionNeeded =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            Manifest.permission.READ_MEDIA_IMAGES
+        } else {
+            Manifest.permission.READ_EXTERNAL_STORAGE
+        }
+
+    fun hasMediaPermission(): Boolean =
+        ContextCompat.checkSelfPermission(context, permissionNeeded) ==
+            PackageManager.PERMISSION_GRANTED
+
+    fun applyLibraryRefresh(
+        data: ScreenshotResults,
+        updateLastScan: Boolean = true
+    ) {
+        screenshotData = data
+        if (updateLastScan) {
+            lastScanEpochMs = System.currentTimeMillis()
+        }
     }
 
     /*
@@ -175,8 +216,15 @@ fun MainContainer(themeViewModel: ThemeViewModel, storageViewModel: StorageViewM
     ) { result ->
 
         if (result.resultCode == Activity.RESULT_OK) {
-
-            screenshotData = fetchScreenshotsData(context, storageSettings.monitoredFolders)
+            scope.launch {
+                isLibraryLoading = true
+                val (data, _) = refreshScreenshotLibrary(
+                    context = context,
+                    monitoredFolders = storageSettings.monitoredFolders
+                )
+                applyLibraryRefresh(data)
+                isLibraryLoading = false
+            }
 
             selectedUris = emptySet()
 
@@ -186,35 +234,57 @@ fun MainContainer(themeViewModel: ThemeViewModel, storageViewModel: StorageViewM
         }
     }
 
-    /*
-     * Permission handling
-     */
-    val permissionNeeded =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            Manifest.permission.READ_MEDIA_IMAGES
-        } else {
-            Manifest.permission.READ_EXTERNAL_STORAGE
-        }
-
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
 
         if (granted) {
-            screenshotData = fetchScreenshotsData(context, storageSettings.monitoredFolders)
+            scope.launch {
+                isLibraryLoading = true
+                val (data, _) = refreshScreenshotLibrary(
+                    context = context,
+                    monitoredFolders = storageSettings.monitoredFolders
+                )
+                applyLibraryRefresh(data)
+                isLibraryLoading = false
+            }
         }
     }
 
     LaunchedEffect(storageSettings.monitoredFolders) {
-        if (
-            ContextCompat.checkSelfPermission(
-                context,
-                permissionNeeded
-            ) == PackageManager.PERMISSION_GRANTED
-        ) {
-            screenshotData = fetchScreenshotsData(context, storageSettings.monitoredFolders)
+        isLibraryLoading = true
+        if (hasMediaPermission()) {
+            val (data, _) = refreshScreenshotLibrary(
+                context = context,
+                monitoredFolders = storageSettings.monitoredFolders
+            )
+            applyLibraryRefresh(data)
         } else {
             permissionLauncher.launch(permissionNeeded)
+        }
+        isLibraryLoading = false
+    }
+
+    fun runLibraryScan() {
+        if (scanButtonState is ScanButtonUiState.Scanning) return
+        if (!hasMediaPermission()) {
+            permissionLauncher.launch(permissionNeeded)
+            return
+        }
+        scope.launch {
+            scanButtonState = ScanButtonUiState.Scanning
+            val previousUris = screenshotData.all.toSet()
+            val (data, outcome) = refreshScreenshotLibrary(
+                context = context,
+                monitoredFolders = storageSettings.monitoredFolders,
+                previousUris = previousUris
+            )
+            applyLibraryRefresh(data)
+            scanButtonState = ScanButtonUiState.Result(resultMessageForScan(outcome))
+            delay(2_400)
+            if (scanButtonState is ScanButtonUiState.Result) {
+                scanButtonState = ScanButtonUiState.Idle
+            }
         }
     }
 
@@ -234,11 +304,23 @@ fun MainContainer(themeViewModel: ThemeViewModel, storageViewModel: StorageViewM
                         title = {
 
                             Text(
-                                text = if (currentScreen == Screen.Home)
-                                    "CleanShot"
-                                else
-                                    currentScreen.name
+                                text = when (currentScreen) {
+                                    Screen.Home -> "CleanShot"
+                                    Screen.Library -> "Search"
+                                    else -> currentScreen.name
+                                }
                             )
+                        },
+
+                        actions = {
+                            if (currentScreen == Screen.Library) {
+                                IconButton(onClick = { libraryOptionsOpen = true }) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Tune,
+                                        contentDescription = "Display options"
+                                    )
+                                }
+                            }
                         }
                     )
 
@@ -307,6 +389,7 @@ fun MainContainer(themeViewModel: ThemeViewModel, storageViewModel: StorageViewM
                     currentScreen = it
 
                     selectedUris = emptySet()
+                    libraryOptionsOpen = false
                 }
             }
         },
@@ -331,20 +414,23 @@ fun MainContainer(themeViewModel: ThemeViewModel, storageViewModel: StorageViewM
 
                     HomeScreen(
                         storageInfo = storageInfo,
-                        totalCount = screenshotData.totalCount,
                         recentScreenshots = screenshotData.recent,
-
+                        scanButtonState = scanButtonState,
+                        lastScannedLabel = lastScannedLabel,
+                        isScanEnabled = scanButtonState is ScanButtonUiState.Idle,
+                        onScanClick = { runLibraryScan() },
+                        onOrganizeClick = { showOrganizeComingSoon = true },
+                        showOrganizeComingSoon = showOrganizeComingSoon,
+                        onDismissOrganizeComingSoon = { showOrganizeComingSoon = false },
                         onViewAllClick = {
                             previousScreen = currentScreen
                             currentScreen = Screen.Library
                         },
-
                         onScreenshotClick = { uri ->
                             initialViewerIndex = screenshotData.all.indexOf(uri).coerceAtLeast(0)
                             previousScreen = currentScreen
                             currentScreen = Screen.Viewer
                         },
-
                         onCleanupClick = {
                             previousScreen = currentScreen
                             currentScreen = Screen.Cleanup
@@ -358,12 +444,20 @@ fun MainContainer(themeViewModel: ThemeViewModel, storageViewModel: StorageViewM
                         onBack = {
                             currentScreen = previousScreen
                         },
+                        onBackToLibrary = {
+                            currentScreen = Screen.Library
+                        },
                         onKeep = { },
                         onDelete = { _ ->
-                            screenshotData = fetchScreenshotsData(
-                                context,
-                                storageSettings.monitoredFolders
-                            )
+                            scope.launch {
+                                isLibraryLoading = true
+                                val (data, _) = refreshScreenshotLibrary(
+                                    context = context,
+                                    monitoredFolders = storageSettings.monitoredFolders
+                                )
+                                applyLibraryRefresh(data)
+                                isLibraryLoading = false
+                            }
                         }
                     )
                 }
@@ -371,9 +465,11 @@ fun MainContainer(themeViewModel: ThemeViewModel, storageViewModel: StorageViewM
                 Screen.Library -> {
 
                     LibraryScreen(
-                        allScreenshots = screenshotData.all,
+                        items = screenshotData.items,
+                        isLoading = isLibraryLoading,
+                        optionsSheetOpen = libraryOptionsOpen,
+                        onOptionsSheetDismiss = { libraryOptionsOpen = false },
                         selectedUris = selectedUris,
-
                         onToggleSelection = { uri ->
 
                             selectedUris =
