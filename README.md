@@ -90,17 +90,6 @@ Open the project in Android Studio and run on an Android device or emulator.
 
 ---
 
-## 📦 Current Status
-
-### v0.4.1 Alpha
-
-Currently under active development with focus on:
-- smooth performance
-- modern UX
-- gesture-driven screenshot management
-
----
-
 ## 👨‍💻 Developer
 
 ### Jai Hasith
