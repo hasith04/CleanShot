@@ -19,7 +19,12 @@ Built with **Kotlin**, **Jetpack Compose**, and **Material 3**, the app focuses 
 >  
 > Some features are still experimental and parts of the UI/animations are actively being refined and improved.
 >  
-> Expect occasional bugs, unfinished functionality, and frequent design/UX changes between updates.
+> Expect occasional bugs, unfinished functionality, and frequent design/UX changes.
+
+> AI tools are occasionally used during development for brainstorming, debugging help, refactoring suggestions, and speeding up repetitive tasks.
+
+> However, CleanShot is not a generated “one-shot” project.  
+The app is actively designed, coded, iterated on, tested, and maintained by me — especially the UI/UX decisions, cleanup flow, theming system, and overall product direction.
 ---
 
 # ✨ Core Features
@@ -101,7 +106,6 @@ Open the project in Android Studio and run on an Android device or emulator.
 ### Jai Hasith
 
 - GitHub: https://github.com/hasith04
-- Instagram: https://www.instagram.com/jaiiiiiiiii________
 
 ---
 
