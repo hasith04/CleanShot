@@ -13,6 +13,14 @@ Built with **Kotlin**, **Jetpack Compose**, and **Material 3**, the app focuses 
 
 
 ---
+## 🗒️ Note
+
+> CleanShot is currently in **alpha/testing phase**.
+>  
+> Some features are still experimental and parts of the UI/animations are actively being refined and improved.
+>  
+> Expect occasional bugs, unfinished functionality, and frequent design/UX changes between updates.
+---
 
 # ✨ Core Features
 
@@ -76,6 +84,7 @@ Built with Material You design principles for a clean and responsive Android exp
 - Android Storage APIs
 
 ---
+
 
 ## 🚀 Installation
 
