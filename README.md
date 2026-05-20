@@ -21,7 +21,7 @@ Built with **Kotlin**, **Jetpack Compose**, and **Material 3**, the app focuses 
 >  
 > Expect occasional bugs, unfinished functionality, and frequent design/UX changes.
 
-> AI tools are occasionally used during development for brainstorming, debugging help, refactoring suggestions, and speeding up repetitive tasks.
+> AI tools are occasionally used during development for debugging help, refactoring suggestions, and speeding up repetitive tasks.
 
 > However, CleanShot is not a generated “one-shot” project.  
 The app is actively designed, coded, iterated on, tested, and maintained by me — especially the UI/UX decisions, cleanup flow, theming system, and overall product direction.
