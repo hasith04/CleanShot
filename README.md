@@ -109,6 +109,6 @@ Open the project in Android Studio and run on an Android device or emulator.
 
 ---
 
-# 📄 License
+## 📄 License
 
-Currently private / unlicensed.
+CleanShot is licensed under the MIT License.
