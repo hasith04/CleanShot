@@ -130,13 +130,18 @@ private const val CARD_ASPECT_WIDTH = 9f
 private const val CARD_ASPECT_HEIGHT = 19.5f
 private const val MAX_ROTATION_DEGREES = 5f
 private const val BACK_CARD_BASE_SCALE = 0.90f
-private const val BACK_CARD_SCALE_DRAG_BOOST = 0.03f
-private const val BACK_CARD_BASE_ALPHA = 0.55f
+private const val BACK_CARD_SCALE_DRAG_BOOST = 0.15f
+private const val BACK_CARD_BASE_ALPHA = 0.70f
 private const val BACK_CARD_ALPHA_DRAG_BOOST = 0.18f
 private val BACK_CARD_Y_OFFSET = 14.dp
-private const val STACK_VISIBLE_COUNT = 3
+private const val STACK_VISIBLE_COUNT = 2
 private const val STACK_DEPTH_2_SCALE_DELTA = 0.04f
 private const val STACK_DEPTH_2_ALPHA_DELTA = 0.08f
+/**
+ * Fraction of card width at which the back card begins promoting toward the front
+ * during an active drag. Must be < 1f.
+ */
+private const val DRAG_PROMOTION_THRESHOLD = 0.35f
 
 private val StackPromotionSpring = spring<Float>(
     dampingRatio = 0.82f,
@@ -466,8 +471,8 @@ fun CleanupScreen(
                 flowPhase = flowPhase,
                 onBack = onBack,
                 enabled = flowPhase != CleanupFlowPhase.Initializing &&
-                    !isAnimating &&
-                    !isDeletingQueue
+                        !isAnimating &&
+                        !isDeletingQueue
             )
 
             Box(
@@ -481,30 +486,30 @@ fun CleanupScreen(
                     transitionSpec = {
                         val swipeHandoff =
                             initialState is CleanupStage.SwipeReview &&
-                                targetState is CleanupStage.SwipeReview
+                                    targetState is CleanupStage.SwipeReview
                         val reviewHandoffToPostReview =
                             (initialState is CleanupStage.SwipeReview ||
-                                initialState is CleanupStage.ReviewSettling) &&
-                                (targetState is CleanupStage.QueueReview ||
-                                    targetState is CleanupStage.Completed)
+                                    initialState is CleanupStage.ReviewSettling) &&
+                                    (targetState is CleanupStage.QueueReview ||
+                                            targetState is CleanupStage.Completed)
                         val initToReview =
                             initialState is CleanupStage.Initializing &&
-                                targetState is CleanupStage.SwipeReview
+                                    targetState is CleanupStage.SwipeReview
                         val swipeToSettling =
                             initialState is CleanupStage.SwipeReview &&
-                                targetState is CleanupStage.ReviewSettling
+                                    targetState is CleanupStage.ReviewSettling
                         when {
                             swipeHandoff -> EnterTransition.None togetherWith ExitTransition.None
                             swipeToSettling ->
                                 fadeIn(tween(160)) togetherWith fadeOut(tween(240))
                             reviewHandoffToPostReview ->
                                 fadeIn(tween(380, delayMillis = 100)) togetherWith
-                                    fadeOut(tween(280))
+                                        fadeOut(tween(280))
                             initToReview ->
                                 fadeIn(tween(320)) togetherWith fadeOut(tween(180))
                             else ->
                                 (fadeIn(tween(320)) + slideInVertically { it / 8 }) togetherWith
-                                    fadeOut(tween(220))
+                                        fadeOut(tween(220))
                         }
                     },
                     label = "cleanup_flow",
@@ -576,7 +581,7 @@ fun CleanupScreen(
                 text = {
                     Text(
                         "Permanently delete $dialogQueuedCount screenshot" +
-                            "${if (dialogQueuedCount == 1) "" else "s"} from your device."
+                                "${if (dialogQueuedCount == 1) "" else "s"} from your device."
                     )
                 },
                 confirmButton = {
@@ -779,7 +784,7 @@ private fun stackVisualsForDepth(
             val t = (depth - 1f).coerceIn(0f, 1f)
             StackLayerVisuals(
                 scale = lerpFloat(backScale, back2Scale, t),
-                alpha = lerpFloat(backAlpha, back2Alpha, t),
+                alpha = lerpFloat(0f, back2Alpha, t),
                 translationY = lerpFloat(backCardYOffsetPx, back2Y, t)
             )
         }
@@ -861,6 +866,15 @@ private fun SwipeCardStack(
         val commitThresholdPx = swipeCommitThresholdPx(cardWidthPx)
         val dragProgress = (abs(displayOffsetX) / cardWidthPx).coerceIn(0f, 1f)
 
+        // How far the back card has promoted during the current drag gesture.
+        // Starts ramping once dragProgress crosses DRAG_PROMOTION_THRESHOLD and reaches 1.0
+        // at full swipe distance — so the second card is already in the front position
+        // before the exit animation even finishes.
+        val dragBasedPromotion = if (dragProgress > DRAG_PROMOTION_THRESHOLD) {
+            ((dragProgress - DRAG_PROMOTION_THRESHOLD) /
+                    (1f - DRAG_PROMOTION_THRESHOLD)).coerceIn(0f, 1f)
+        } else 0f
+
         // Back → front: third, second, then interactive top (exiting card drawn on top).
         deckUris.take(STACK_VISIBLE_COUNT).asReversed().forEach { uri ->
             if (uri == exitingUri) return@forEach
@@ -869,9 +883,15 @@ private fun SwipeCardStack(
 
             val depth = when (stackIndex) {
                 0 -> 0f
+                // Fold drag-based promotion in so the second card starts moving toward
+                // the front at DRAG_PROMOTION_THRESHOLD — before the exit animation starts.
+                // `promotion` (post-exit spring) handles the remainder for fast flicks.
+                1 -> (1f - dragBasedPromotion - promotion).coerceAtLeast(0f)
                 else -> (stackIndex - promotion).coerceAtLeast(0f)
             }
-            val layerDragProgress = if (stackIndex == 0 && uri == topUri) dragProgress else 0f
+            // Feed the live drag progress to the back card too so its backScale / backAlpha
+            // targets grow with the gesture, giving a continuous "growing out of the stack" feel.
+            val layerDragProgress = if (uri == topUri || stackIndex == 1) dragProgress else 0f
             val visuals = stackVisualsForDepth(depth, layerDragProgress, backCardYOffsetPx)
 
             key(uri) {
@@ -1146,12 +1166,12 @@ private fun SwipeOverlay(
     val overlayAlpha = when (phase) {
         SwipeProgressPhase.Slight -> {
             val t = (progress - SWIPE_HINT_THRESHOLD_FRACTION) /
-                (SWIPE_PREVIEW_THRESHOLD_FRACTION - SWIPE_HINT_THRESHOLD_FRACTION)
+                    (SWIPE_PREVIEW_THRESHOLD_FRACTION - SWIPE_HINT_THRESHOLD_FRACTION)
             t.coerceIn(0f, 1f) * 0.08f
         }
         SwipeProgressPhase.Preview -> {
             val t = (progress - SWIPE_PREVIEW_THRESHOLD_FRACTION) /
-                (SWIPE_COMMIT_THRESHOLD_FRACTION - SWIPE_PREVIEW_THRESHOLD_FRACTION)
+                    (SWIPE_COMMIT_THRESHOLD_FRACTION - SWIPE_PREVIEW_THRESHOLD_FRACTION)
             0.08f + t.coerceIn(0f, 1f) * 0.16f
         }
         SwipeProgressPhase.CommitReady -> {
